@@ -265,7 +265,7 @@ web-build/
     results['.gitignore'] = await createGitHubFile('.gitignore', gitignore, 'Add .gitignore');
 
     // 6. codemagic.yaml - Using expo prebuild with SDK 49 (no auth required)
-    // Includes webhook for real-time build status updates
+    // Includes post-publish webhook for real-time build status updates
     const webhookUrl = 'https://viudzmarsxxblbdaxfzu.supabase.co/functions/v1/codemagic-webhook';
     
     const codemagicYaml = `workflows:
@@ -289,10 +289,17 @@ web-build/
         script: cd android && ./gradlew --version
       - name: Set up local.properties
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Mark build started
+        script: |
+          curl -X POST "${webhookUrl}" \\
+            -H "Content-Type: application/json" \\
+            -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "building"}'
       - name: Build Android APK
         script: |
           cd android
           ./gradlew assembleRelease --no-daemon
+      - name: Mark build success
+        script: touch ~/SUCCESS
     artifacts:
       - android/app/build/outputs/**/*.apk
     publishing:
@@ -303,18 +310,18 @@ web-build/
           success: true
           failure: true
       scripts:
-        - name: Send webhook notification
+        - name: Report build status
           script: |
-            curl -X POST "${webhookUrl}" \\
-              -H "Content-Type: application/json" \\
-              -d '{
-                "buildId": "'"\$CM_BUILD_ID"'",
-                "appId": "'"\$CM_PROJECT_ID"'",
-                "workflowId": "android-workflow",
-                "branch": "'"\$CM_BRANCH"'",
-                "status": "'"\$CM_BUILD_STEP_STATUS"'",
-                "artefacts": []
-              }'
+            if [ -f ~/SUCCESS ]; then
+              ARTIFACT_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".apk")) | .url' | head -1)
+              curl -X POST "${webhookUrl}" \\
+                -H "Content-Type: application/json" \\
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.apk", "url": "'"$ARTIFACT_URL"'", "type": "apk"}]}'
+            else
+              curl -X POST "${webhookUrl}" \\
+                -H "Content-Type: application/json" \\
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "failed", "error": "Build failed"}'
+            fi
 
   ios-workflow:
     name: iOS Build
@@ -336,10 +343,17 @@ web-build/
         script: npx expo prebuild --platform ios --clean --no-install
       - name: Install CocoaPods
         script: cd ios && pod install
+      - name: Mark build started
+        script: |
+          curl -X POST "${webhookUrl}" \\
+            -H "Content-Type: application/json" \\
+            -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "building"}'
       - name: Build iOS
         script: |
           cd ios
           xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      - name: Mark build success
+        script: touch ~/SUCCESS
     artifacts:
       - ios/build/**/*.xcarchive
     publishing:
@@ -350,18 +364,18 @@ web-build/
           success: true
           failure: true
       scripts:
-        - name: Send webhook notification
+        - name: Report build status
           script: |
-            curl -X POST "${webhookUrl}" \\
-              -H "Content-Type: application/json" \\
-              -d '{
-                "buildId": "'"\$CM_BUILD_ID"'",
-                "appId": "'"\$CM_PROJECT_ID"'",
-                "workflowId": "ios-workflow",
-                "branch": "'"\$CM_BRANCH"'",
-                "status": "'"\$CM_BUILD_STEP_STATUS"'",
-                "artefacts": []
-              }'`;
+            if [ -f ~/SUCCESS ]; then
+              ARTIFACT_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".xcarchive")) | .url' | head -1)
+              curl -X POST "${webhookUrl}" \\
+                -H "Content-Type: application/json" \\
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.xcarchive", "url": "'"$ARTIFACT_URL"'", "type": "xcarchive"}]}'
+            else
+              curl -X POST "${webhookUrl}" \\
+                -H "Content-Type: application/json" \\
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "failed", "error": "Build failed"}'
+            fi`;
     results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Add codemagic.yaml with webhook');
 
     // 7. README.md
