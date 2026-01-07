@@ -10,6 +10,8 @@ import KeystoreStep from "@/components/builder/KeystoreStep";
 import PlatformStep from "@/components/builder/PlatformStep";
 import BuildSuccessStep from "@/components/builder/BuildSuccessStep";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 const steps = [
@@ -36,10 +38,21 @@ interface KeystoreConfig {
   country: string;
 }
 
+interface BuildResult {
+  platform: string;
+  status: string;
+  buildId: string;
+  message: string;
+  estimatedTime: string;
+  downloadUrl: string | null;
+}
+
 const Builder = () => {
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [buildComplete, setBuildComplete] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
+  const [buildResults, setBuildResults] = useState<BuildResult[]>([]);
 
   // Step 1: Website URL
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -102,13 +115,48 @@ const Builder = () => {
     }
   };
 
-  const handleBuild = () => {
+  const handleBuild = async () => {
     setIsBuilding(true);
-    // Simulate build process
-    setTimeout(() => {
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('build-app', {
+        body: {
+          websiteUrl,
+          appName,
+          packageId,
+          appDescription,
+          appIcon,
+          enableNavigation,
+          navItems,
+          keystoreConfig: generateKeystore ? keystoreConfig : null,
+          platforms: selectedPlatforms,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.success) {
+        setBuildResults(data.builds || []);
+        setBuildComplete(true);
+        toast({
+          title: "Build Started!",
+          description: "Your app build has been queued with Codemagic.",
+        });
+      } else {
+        throw new Error(data?.error || 'Build failed');
+      }
+    } catch (error) {
+      console.error('Build error:', error);
+      toast({
+        title: "Build Error",
+        description: error instanceof Error ? error.message : "Failed to start build. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsBuilding(false);
-      setBuildComplete(true);
-    }, 3000);
+    }
   };
 
   const handleStartOver = () => {
@@ -139,6 +187,7 @@ const Builder = () => {
           selectedPlatforms={selectedPlatforms}
           appName={appName}
           onStartOver={handleStartOver}
+          buildResults={buildResults}
         />
       );
     }
@@ -189,6 +238,10 @@ const Builder = () => {
             setSelectedPlatforms={setSelectedPlatforms}
             isBuilding={isBuilding}
             onBuild={handleBuild}
+            websiteUrl={websiteUrl}
+            appName={appName}
+            enableNavigation={enableNavigation}
+            navItems={navItems}
           />
         );
       default:
