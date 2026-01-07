@@ -76,6 +76,7 @@ const Builder = () => {
 
   // Step 5: Navigation
   const [enableNavigation, setEnableNavigation] = useState(false);
+  const [navigationType, setNavigationType] = useState<"tabs" | "drawer">("tabs");
   const [navItems, setNavItems] = useState<NavItem[]>([
     { id: "1", label: "Home", url: "/", icon: "home" },
   ]);
@@ -139,6 +140,7 @@ const Builder = () => {
           appIcon,
           splashConfig,
           enableNavigation,
+          navigationType,
           navItems,
           keystoreConfig: generateKeystore ? keystoreConfig : null,
           platforms: selectedPlatforms,
@@ -181,6 +183,7 @@ const Builder = () => {
     setAppIcon(null);
     setSplashConfig({ image: null, backgroundColor: "#ffffff", resizeMode: "contain" });
     setEnableNavigation(false);
+    setNavigationType("tabs");
     setNavItems([{ id: "1", label: "Home", url: "/", icon: "home" }]);
     setGenerateKeystore(false);
     setKeystoreConfig({
@@ -235,6 +238,8 @@ const Builder = () => {
             setEnableNavigation={setEnableNavigation}
             navItems={navItems}
             setNavItems={setNavItems}
+            navigationType={navigationType}
+            setNavigationType={setNavigationType}
           />
         );
       case 6:

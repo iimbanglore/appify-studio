@@ -27,6 +27,7 @@ interface BuildRequest {
   appIcon?: string; // base64 encoded image
   splashConfig?: SplashConfig;
   enableNavigation: boolean;
+  navigationType?: "tabs" | "drawer";
   navItems?: Array<{ label: string; url: string; icon: string }>;
   keystoreConfig?: {
     alias: string;
@@ -362,9 +363,116 @@ serve(async (req) => {
 
 function generateAppCode(config: BuildRequest): string {
   const hasNav = config.enableNavigation && config.navItems && config.navItems.length > 0;
+  const isDrawer = config.navigationType === "drawer";
   
-  if (hasNav) {
-    // With navigation
+  if (hasNav && isDrawer) {
+    // Drawer Navigation
+    const navItemsJson = JSON.stringify(config.navItems);
+    return `import React from 'react';
+import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
+import { WebView } from 'react-native-webview';
+import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
+import { NavigationContainer } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+
+const Drawer = createDrawerNavigator();
+
+const navItems = ${navItemsJson};
+
+function WebViewScreen({ url }) {
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <WebView
+        source={{ uri: url }}
+        style={styles.webview}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        startInLoadingState={true}
+        scalesPageToFit={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
+      />
+    </View>
+  );
+}
+
+function CustomDrawerContent(props) {
+  return (
+    <DrawerContentScrollView {...props} style={styles.drawerContent}>
+      <View style={styles.drawerHeader}>
+        <Text style={styles.drawerTitle}>${config.appName}</Text>
+      </View>
+      <DrawerItemList {...props} />
+    </DrawerContentScrollView>
+  );
+}
+
+function AppNavigator() {
+  return (
+    <Drawer.Navigator
+      drawerContent={(props) => <CustomDrawerContent {...props} />}
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: '#1a1a1a' },
+        headerTintColor: '#fff',
+        drawerStyle: { backgroundColor: '#1a1a1a', width: 280 },
+        drawerActiveTintColor: '#007AFF',
+        drawerInactiveTintColor: '#8E8E93',
+        drawerLabelStyle: { marginLeft: -16, fontSize: 15 },
+      }}
+    >
+      {navItems.map((item, index) => (
+        <Drawer.Screen 
+          key={index}
+          name={item.label}
+          options={{
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name={item.icon || 'menu'} size={size} color={color} />
+            ),
+          }}
+          children={() => <WebViewScreen url={"${config.websiteUrl}" + item.url} />}
+        />
+      ))}
+    </Drawer.Navigator>
+  );
+}
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  webview: {
+    flex: 1,
+  },
+  drawerContent: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  drawerHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    marginBottom: 10,
+  },
+  drawerTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+});`;
+  } else if (hasNav) {
+    // Bottom Tab Navigation
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React from 'react';
 import { StatusBar, StyleSheet, SafeAreaView, Platform } from 'react-native';
@@ -407,6 +515,7 @@ function AppNavigator() {
         },
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: '#8E8E93',
+        tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
       })}
     >
       {navItems.map((item, index) => (
