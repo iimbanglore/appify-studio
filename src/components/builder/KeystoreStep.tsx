@@ -1,0 +1,186 @@
+import { useState } from "react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Key, Download, Shield, Eye, EyeOff } from "lucide-react";
+
+interface KeystoreConfig {
+  alias: string;
+  password: string;
+  validity: string;
+  organization: string;
+  country: string;
+}
+
+interface KeystoreStepProps {
+  generateKeystore: boolean;
+  setGenerateKeystore: (generate: boolean) => void;
+  keystoreConfig: KeystoreConfig;
+  setKeystoreConfig: (config: KeystoreConfig) => void;
+}
+
+const KeystoreStep = ({
+  generateKeystore,
+  setGenerateKeystore,
+  keystoreConfig,
+  setKeystoreConfig,
+}: KeystoreStepProps) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const updateConfig = (field: keyof KeystoreConfig, value: string) => {
+    setKeystoreConfig({ ...keystoreConfig, [field]: value });
+  };
+
+  const handleGenerateKeystore = () => {
+    setIsGenerating(true);
+    // Simulate keystore generation
+    setTimeout(() => {
+      setIsGenerating(false);
+      // In a real app, this would trigger a download
+    }, 2000);
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="text-center mb-8">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <Key className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">JKS Keystore Generator</h2>
+        <p className="text-muted-foreground">
+          Generate a keystore file to sign your Android app for the Play Store
+        </p>
+      </div>
+
+      <div className="max-w-lg mx-auto space-y-6">
+        {/* Enable Toggle */}
+        <div className="flex items-center justify-between p-4 rounded-xl bg-accent/50">
+          <div>
+            <Label htmlFor="enable-keystore" className="font-medium">
+              Generate JKS Keystore
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Required for publishing to Google Play Store
+            </p>
+          </div>
+          <Switch
+            id="enable-keystore"
+            checked={generateKeystore}
+            onCheckedChange={setGenerateKeystore}
+          />
+        </div>
+
+        {generateKeystore && (
+          <>
+            <div className="grid gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="alias">Key Alias</Label>
+                  <Input
+                    id="alias"
+                    placeholder="my-key-alias"
+                    value={keystoreConfig.alias}
+                    onChange={(e) => updateConfig("alias", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="validity">Validity (years)</Label>
+                  <Input
+                    id="validity"
+                    type="number"
+                    placeholder="25"
+                    value={keystoreConfig.validity}
+                    onChange={(e) => updateConfig("validity", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Keystore Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter a strong password"
+                    value={keystoreConfig.password}
+                    onChange={(e) => updateConfig("password", e.target.value)}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="organization">Organization</Label>
+                  <Input
+                    id="organization"
+                    placeholder="My Company"
+                    value={keystoreConfig.organization}
+                    onChange={(e) => updateConfig("organization", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="country">Country Code</Label>
+                  <Input
+                    id="country"
+                    placeholder="US"
+                    maxLength={2}
+                    value={keystoreConfig.country}
+                    onChange={(e) => updateConfig("country", e.target.value.toUpperCase())}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Button
+              variant="hero"
+              onClick={handleGenerateKeystore}
+              disabled={isGenerating || !keystoreConfig.alias || !keystoreConfig.password}
+              className="w-full"
+            >
+              {isGenerating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Generate & Download Keystore
+                </>
+              )}
+            </Button>
+
+            <div className="bg-accent/50 rounded-xl p-4 space-y-2">
+              <div className="flex items-start gap-2">
+                <Shield className="w-5 h-5 text-primary mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium">Keep Your Keystore Safe</p>
+                  <p className="text-xs text-muted-foreground">
+                    Store your keystore file and password securely. You'll need the 
+                    same keystore to update your app in the future.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default KeystoreStep;
