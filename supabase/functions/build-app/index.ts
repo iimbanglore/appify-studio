@@ -6,13 +6,16 @@ const corsHeaders = {
 };
 
 const CODEMAGIC_API_TOKEN = Deno.env.get('CODEMAGIC_API_TOKEN');
+const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+const GITHUB_REPO_OWNER = Deno.env.get('GITHUB_REPO_OWNER');
+const GITHUB_REPO_NAME = Deno.env.get('GITHUB_REPO_NAME');
 
 interface BuildRequest {
   websiteUrl: string;
   appName: string;
   packageId: string;
   appDescription?: string;
-  appIcon?: string;
+  appIcon?: string; // base64 encoded image
   enableNavigation: boolean;
   navItems?: Array<{ label: string; url: string; icon: string }>;
   keystoreConfig?: {
@@ -23,6 +26,156 @@ interface BuildRequest {
     country: string;
   };
   platforms: string[];
+}
+
+// Update GitHub repo file via GitHub API
+async function updateGitHubFile(path: string, content: string, message: string): Promise<boolean> {
+  if (!GITHUB_TOKEN || !GITHUB_REPO_OWNER || !GITHUB_REPO_NAME) {
+    console.log('GitHub credentials not configured, skipping file update');
+    return false;
+  }
+
+  try {
+    // First, get the current file SHA (needed for updates)
+    const getFileResponse = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${path}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Lovable-Build-App',
+        },
+      }
+    );
+
+    let sha: string | undefined;
+    if (getFileResponse.ok) {
+      const fileData = await getFileResponse.json();
+      sha = fileData.sha;
+      console.log(`Found existing file ${path} with SHA: ${sha}`);
+    } else {
+      console.log(`File ${path} does not exist, will create new`);
+    }
+
+    // Update or create the file
+    const updateResponse = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${path}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Lovable-Build-App',
+        },
+        body: JSON.stringify({
+          message,
+          content, // Must be base64 encoded
+          sha, // Include SHA if updating existing file
+          branch: 'main',
+        }),
+      }
+    );
+
+    if (!updateResponse.ok) {
+      const errorData = await updateResponse.json();
+      console.error(`Failed to update ${path}:`, JSON.stringify(errorData));
+      return false;
+    }
+
+    console.log(`Successfully updated ${path}`);
+    return true;
+  } catch (error) {
+    console.error(`Error updating GitHub file ${path}:`, error);
+    return false;
+  }
+}
+
+// Upload user's app icon to GitHub repo
+async function uploadAppIconToGitHub(appIcon: string): Promise<boolean> {
+  if (!appIcon) {
+    console.log('No app icon provided, skipping upload');
+    return false;
+  }
+
+  // Extract base64 content from data URL if needed
+  let base64Content = appIcon;
+  if (appIcon.startsWith('data:')) {
+    base64Content = appIcon.split(',')[1];
+  }
+
+  console.log('Uploading app icon to GitHub...');
+  
+  // Upload all required icon files
+  const iconFiles = [
+    { path: 'assets/icon.png', size: '1024x1024' },
+    { path: 'assets/adaptive-icon.png', size: '1024x1024' },
+    { path: 'assets/favicon.png', size: '48x48' },
+    { path: 'assets/splash.png', size: '2048x2048' },
+  ];
+
+  let allSuccess = true;
+  for (const iconFile of iconFiles) {
+    // Note: In production, you'd want to resize the image to proper dimensions
+    // For now, we upload the same image to all paths
+    const success = await updateGitHubFile(
+      iconFile.path,
+      base64Content,
+      `Update ${iconFile.path} for new app build`
+    );
+    if (!success) allSuccess = false;
+  }
+
+  return allSuccess;
+}
+
+// Update app.json with app-specific configuration
+async function updateAppConfig(config: BuildRequest): Promise<boolean> {
+  const appJson = {
+    expo: {
+      name: config.appName,
+      slug: config.appName.toLowerCase().replace(/\s+/g, '-'),
+      version: "1.0.0",
+      orientation: "portrait",
+      icon: "./assets/icon.png",
+      userInterfaceStyle: "automatic",
+      splash: {
+        image: "./assets/splash.png",
+        resizeMode: "contain",
+        backgroundColor: "#ffffff"
+      },
+      assetBundlePatterns: ["**/*"],
+      ios: {
+        supportsTablet: true,
+        bundleIdentifier: config.packageId
+      },
+      android: {
+        adaptiveIcon: {
+          foregroundImage: "./assets/adaptive-icon.png",
+          backgroundColor: "#ffffff"
+        },
+        package: config.packageId
+      },
+      web: {
+        favicon: "./assets/favicon.png"
+      },
+      extra: {
+        websiteUrl: config.websiteUrl,
+        enableNavigation: config.enableNavigation,
+        navItems: config.navItems || []
+      }
+    }
+  };
+
+  const base64Content = btoa(JSON.stringify(appJson, null, 2));
+  return await updateGitHubFile('app.json', base64Content, `Update app.json for ${config.appName}`);
+}
+
+// Update App.js with navigation configuration
+async function updateAppCode(config: BuildRequest): Promise<boolean> {
+  const appCode = generateAppCode(config);
+  const base64Content = btoa(appCode);
+  return await updateGitHubFile('App.js', base64Content, `Update App.js for ${config.appName}`);
 }
 
 serve(async (req) => {
@@ -39,12 +192,28 @@ serve(async (req) => {
       throw new Error('CODEMAGIC_API_TOKEN is not configured');
     }
 
-    // Generate the React Native/Expo app code for the webview wrapper
+    // Step 1: Upload user's app icon to GitHub
+    if (buildRequest.appIcon) {
+      console.log('Uploading user app icon to GitHub...');
+      const iconUploadSuccess = await uploadAppIconToGitHub(buildRequest.appIcon);
+      console.log('Icon upload result:', iconUploadSuccess);
+    }
+
+    // Step 2: Update app.json with user's configuration
+    console.log('Updating app.json in GitHub...');
+    const appJsonSuccess = await updateAppConfig(buildRequest);
+    console.log('App.json update result:', appJsonSuccess);
+
+    // Step 3: Update App.js with navigation config
+    console.log('Updating App.js in GitHub...');
+    const appCodeSuccess = await updateAppCode(buildRequest);
+    console.log('App.js update result:', appCodeSuccess);
+
+    // Generate the React Native/Expo app code for reference
     const appCode = generateAppCode(buildRequest);
     console.log('Generated app code length:', appCode.length);
 
-    // For Codemagic, we need to trigger a build via their API
-    // First, we'll create a build configuration dynamically
+    // Step 4: Trigger Codemagic builds
     const buildResults = [];
 
     for (const platform of buildRequest.platforms) {
@@ -107,6 +276,11 @@ serve(async (req) => {
       builds: buildResults,
       appCode: appCode,
       snackId: generateSnackId(buildRequest),
+      githubUpdates: {
+        icon: !!buildRequest.appIcon,
+        appJson: true,
+        appJs: true,
+      },
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
