@@ -1,1 +1,7 @@
 project_id = "viudzmarsxxblbdaxfzu"
+
+[functions.build-app]
+verify_jwt = false
+
+[functions.init-template-repo]
+verify_jwt = false
