@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +10,8 @@ const CODEMAGIC_API_TOKEN = Deno.env.get('CODEMAGIC_API_TOKEN');
 const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
 const GITHUB_REPO_OWNER = Deno.env.get('GITHUB_REPO_OWNER');
 const GITHUB_REPO_NAME = Deno.env.get('GITHUB_REPO_NAME');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 interface BuildRequest {
   websiteUrl: string;
@@ -213,6 +216,9 @@ serve(async (req) => {
     const appCode = generateAppCode(buildRequest);
     console.log('Generated app code length:', appCode.length);
 
+    // Initialize Supabase client
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
     // Step 4: Trigger Codemagic builds
     const buildResults = [];
 
@@ -248,27 +254,45 @@ serve(async (req) => {
       const buildData = await buildResponse.json();
       console.log(`Build response for ${platform}:`, JSON.stringify(buildData, null, 2));
 
+      let buildId: string;
+      let status = 'queued';
+      let message: string;
+
       if (!buildResponse.ok) {
-        // If Codemagic API fails, return a simulated response for demo purposes
+        // If Codemagic API fails, use a demo build ID
         console.log('Codemagic API error, using simulated build');
-        buildResults.push({
-          platform,
-          status: 'queued',
-          buildId: `demo-${platform}-${Date.now()}`,
-          message: `${platform.toUpperCase()} build queued. In production, this would trigger a real Codemagic build.`,
-          estimatedTime: platform === 'android' ? '5-10 minutes' : '10-15 minutes',
-          downloadUrl: null,
-        });
+        buildId = `demo-${platform}-${Date.now()}`;
+        message = `${platform.toUpperCase()} build queued. In production, this would trigger a real Codemagic build.`;
       } else {
-        buildResults.push({
-          platform,
-          status: 'queued',
-          buildId: buildData._id || buildData.buildId,
-          message: `${platform.toUpperCase()} build started successfully`,
-          estimatedTime: platform === 'android' ? '5-10 minutes' : '10-15 minutes',
-          downloadUrl: null,
-        });
+        buildId = buildData._id || buildData.buildId;
+        message = `${platform.toUpperCase()} build started successfully`;
       }
+
+      // Save build to database for real-time tracking
+      const { error: insertError } = await supabase
+        .from('builds')
+        .insert({
+          build_id: buildId,
+          platform,
+          status,
+          app_name: buildRequest.appName,
+          package_id: buildRequest.packageId,
+        });
+
+      if (insertError) {
+        console.error(`Error saving build to database:`, insertError);
+      } else {
+        console.log(`Saved build ${buildId} to database`);
+      }
+
+      buildResults.push({
+        platform,
+        status,
+        buildId,
+        message,
+        estimatedTime: platform === 'android' ? '5-10 minutes' : '10-15 minutes',
+        downloadUrl: null,
+      });
     }
 
     return new Response(JSON.stringify({

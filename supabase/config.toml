@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.init-template-repo]
 verify_jwt = false
+
+[functions.codemagic-webhook]
+verify_jwt = false

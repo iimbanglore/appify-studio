@@ -29,33 +29,57 @@ const BuildSuccessStep = ({
   const [downloadingIos, setDownloadingIos] = useState(false);
   const [builds, setBuilds] = useState<BuildResult[]>(buildResults);
 
-  // Poll for build status updates
+  // Subscribe to real-time build updates
   useEffect(() => {
-    if (builds.some(b => b.status === 'queued' || b.status === 'building')) {
-      const interval = setInterval(async () => {
-        // In production, this would check Codemagic API for build status
-        // For now, simulate build completion after a delay
-        setBuilds(prev => prev.map(build => {
-          if (build.status === 'queued') {
-            return { ...build, status: 'building' };
-          }
-          if (build.status === 'building') {
-            // Simulate completion after some polls
-            if (Math.random() > 0.7) {
-              return { 
-                ...build, 
-                status: 'completed',
-                downloadUrl: `#demo-download-${build.platform}`
+    // Get build IDs to track
+    const buildIds = buildResults.map(b => b.buildId);
+    if (buildIds.length === 0) return;
+
+    console.log('Subscribing to real-time updates for builds:', buildIds);
+
+    const channel = supabase
+      .channel('build-status-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'builds',
+        },
+        (payload) => {
+          console.log('Real-time build update received:', payload);
+          
+          const updatedBuild = payload.new as {
+            build_id: string;
+            platform: string;
+            status: string;
+            download_url: string | null;
+            error_message: string | null;
+          };
+
+          // Update our local state if this build is one we're tracking
+          setBuilds(prev => prev.map(build => {
+            if (build.buildId === updatedBuild.build_id) {
+              return {
+                ...build,
+                status: updatedBuild.status,
+                downloadUrl: updatedBuild.download_url,
+                message: updatedBuild.error_message || build.message,
               };
             }
-          }
-          return build;
-        }));
-      }, 5000);
+            return build;
+          }));
+        }
+      )
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
 
-      return () => clearInterval(interval);
-    }
-  }, [builds]);
+    return () => {
+      console.log('Unsubscribing from real-time updates');
+      supabase.removeChannel(channel);
+    };
+  }, [buildResults]);
 
   const sanitizeFileName = (name: string) => {
     return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() || 'app';

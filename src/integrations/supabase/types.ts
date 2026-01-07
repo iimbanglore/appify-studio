@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      builds: {
+        Row: {
+          app_name: string
+          artifact_url: string | null
+          build_id: string
+          created_at: string
+          download_url: string | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          package_id: string | null
+          platform: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          app_name: string
+          artifact_url?: string | null
+          build_id: string
+          created_at?: string
+          download_url?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          package_id?: string | null
+          platform: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          app_name?: string
+          artifact_url?: string | null
+          build_id?: string
+          created_at?: string
+          download_url?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          package_id?: string | null
+          platform?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
