@@ -384,7 +384,7 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
     return {
       name: `${config.appName} Android Build`,
       instance_type: 'mac_mini_m2',
-      max_build_duration: 60,
+      max_build_duration: 120,
       environment: {
         vars: {
           PACKAGE_NAME: config.packageId,
@@ -392,15 +392,17 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Build Android', script: 'npx expo build:android -t apk' },
+        { name: 'Install Expo CLI', script: 'npm install -g expo-cli eas-cli' },
+        { name: 'Generate native projects', script: 'npx expo prebuild --platform android --clean' },
+        { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease' },
       ],
-      artifacts: ['*.apk'],
+      artifacts: ['android/app/build/outputs/**/*.apk'],
     };
   } else {
     return {
       name: `${config.appName} iOS Build`,
       instance_type: 'mac_mini_m2',
-      max_build_duration: 90,
+      max_build_duration: 120,
       environment: {
         vars: {
           BUNDLE_ID: config.packageId,
@@ -408,9 +410,12 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Build iOS', script: 'npx expo build:ios -t archive' },
+        { name: 'Install Expo CLI', script: 'npm install -g expo-cli eas-cli' },
+        { name: 'Generate native projects', script: 'npx expo prebuild --platform ios --clean' },
+        { name: 'Install CocoaPods', script: 'cd ios && pod install' },
+        { name: 'Build iOS', script: 'xcodebuild -workspace ios/*.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive' },
       ],
-      artifacts: ['*.ipa'],
+      artifacts: ['ios/build/**/*.ipa', 'ios/build/**/*.xcarchive'],
     };
   }
 }
