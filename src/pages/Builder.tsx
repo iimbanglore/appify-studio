@@ -5,6 +5,7 @@ import StepIndicator from "@/components/builder/StepIndicator";
 import WebsiteUrlStep from "@/components/builder/WebsiteUrlStep";
 import AppDetailsStep from "@/components/builder/AppDetailsStep";
 import IconUploadStep from "@/components/builder/IconUploadStep";
+import SplashScreenStep, { SplashConfig } from "@/components/builder/SplashScreenStep";
 import NavigationStep from "@/components/builder/NavigationStep";
 import KeystoreStep from "@/components/builder/KeystoreStep";
 import PlatformStep from "@/components/builder/PlatformStep";
@@ -18,9 +19,10 @@ const steps = [
   { id: 1, title: "Website" },
   { id: 2, title: "Details" },
   { id: 3, title: "Icon" },
-  { id: 4, title: "Navigation" },
-  { id: 5, title: "Keystore" },
-  { id: 6, title: "Build" },
+  { id: 4, title: "Splash" },
+  { id: 5, title: "Navigation" },
+  { id: 6, title: "Keystore" },
+  { id: 7, title: "Build" },
 ];
 
 interface NavItem {
@@ -65,13 +67,20 @@ const Builder = () => {
   // Step 3: App Icon
   const [appIcon, setAppIcon] = useState<string | null>(null);
 
-  // Step 4: Navigation
+  // Step 4: Splash Screen
+  const [splashConfig, setSplashConfig] = useState<SplashConfig>({
+    image: null,
+    backgroundColor: "#ffffff",
+    resizeMode: "contain",
+  });
+
+  // Step 5: Navigation
   const [enableNavigation, setEnableNavigation] = useState(false);
   const [navItems, setNavItems] = useState<NavItem[]>([
     { id: "1", label: "Home", url: "/", icon: "home" },
   ]);
 
-  // Step 5: Keystore
+  // Step 6: Keystore
   const [generateKeystore, setGenerateKeystore] = useState(false);
   const [keystoreConfig, setKeystoreConfig] = useState<KeystoreConfig>({
     alias: "",
@@ -81,7 +90,7 @@ const Builder = () => {
     country: "",
   });
 
-  // Step 6: Platform
+  // Step 7: Platform
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
 
   const canProceed = () => {
@@ -93,10 +102,12 @@ const Builder = () => {
       case 3:
         return true; // Icon is optional
       case 4:
-        return true; // Navigation is optional
+        return true; // Splash is optional
       case 5:
-        return true; // Keystore is optional
+        return true; // Navigation is optional
       case 6:
+        return true; // Keystore is optional
+      case 7:
         return selectedPlatforms.length > 0;
       default:
         return false;
@@ -104,7 +115,7 @@ const Builder = () => {
   };
 
   const nextStep = () => {
-    if (currentStep < 6 && canProceed()) {
+    if (currentStep < 7 && canProceed()) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -126,6 +137,7 @@ const Builder = () => {
           packageId,
           appDescription,
           appIcon,
+          splashConfig,
           enableNavigation,
           navItems,
           keystoreConfig: generateKeystore ? keystoreConfig : null,
@@ -167,6 +179,7 @@ const Builder = () => {
     setPackageId("");
     setAppDescription("");
     setAppIcon(null);
+    setSplashConfig({ image: null, backgroundColor: "#ffffff", resizeMode: "contain" });
     setEnableNavigation(false);
     setNavItems([{ id: "1", label: "Home", url: "/", icon: "home" }]);
     setGenerateKeystore(false);
@@ -214,6 +227,8 @@ const Builder = () => {
       case 3:
         return <IconUploadStep appIcon={appIcon} setAppIcon={setAppIcon} />;
       case 4:
+        return <SplashScreenStep splashConfig={splashConfig} setSplashConfig={setSplashConfig} />;
+      case 5:
         return (
           <NavigationStep
             enableNavigation={enableNavigation}
@@ -222,7 +237,7 @@ const Builder = () => {
             setNavItems={setNavItems}
           />
         );
-      case 5:
+      case 6:
         return (
           <KeystoreStep
             generateKeystore={generateKeystore}
@@ -231,7 +246,7 @@ const Builder = () => {
             setKeystoreConfig={setKeystoreConfig}
           />
         );
-      case 6:
+      case 7:
         return (
           <PlatformStep
             selectedPlatforms={selectedPlatforms}
@@ -268,7 +283,7 @@ const Builder = () => {
           </div>
 
           {/* Navigation Buttons */}
-          {!buildComplete && currentStep !== 6 && (
+          {!buildComplete && currentStep !== 7 && (
             <div className="flex justify-between mt-6">
               <Button
                 variant="ghost"
@@ -290,7 +305,7 @@ const Builder = () => {
             </div>
           )}
 
-          {!buildComplete && currentStep === 6 && (
+          {!buildComplete && currentStep === 7 && (
             <div className="flex justify-start mt-6">
               <Button variant="ghost" onClick={prevStep}>
                 <ArrowLeft className="w-4 h-4 mr-2" />

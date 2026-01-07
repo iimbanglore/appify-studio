@@ -13,12 +13,19 @@ const GITHUB_REPO_NAME = Deno.env.get('GITHUB_REPO_NAME');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+interface SplashConfig {
+  image: string | null;
+  backgroundColor: string;
+  resizeMode: "contain" | "cover" | "native";
+}
+
 interface BuildRequest {
   websiteUrl: string;
   appName: string;
   packageId: string;
   appDescription?: string;
   appIcon?: string; // base64 encoded image
+  splashConfig?: SplashConfig;
   enableNavigation: boolean;
   navItems?: Array<{ label: string; url: string; icon: string }>;
   keystoreConfig?: {
@@ -109,18 +116,15 @@ async function uploadAppIconToGitHub(appIcon: string): Promise<boolean> {
 
   console.log('Uploading app icon to GitHub...');
   
-  // Upload all required icon files
+  // Upload icon files (not splash - that's handled separately)
   const iconFiles = [
     { path: 'assets/icon.png', size: '1024x1024' },
     { path: 'assets/adaptive-icon.png', size: '1024x1024' },
     { path: 'assets/favicon.png', size: '48x48' },
-    { path: 'assets/splash.png', size: '2048x2048' },
   ];
 
   let allSuccess = true;
   for (const iconFile of iconFiles) {
-    // Note: In production, you'd want to resize the image to proper dimensions
-    // For now, we upload the same image to all paths
     const success = await updateGitHubFile(
       iconFile.path,
       base64Content,
@@ -132,8 +136,33 @@ async function uploadAppIconToGitHub(appIcon: string): Promise<boolean> {
   return allSuccess;
 }
 
+// Upload splash screen image to GitHub repo
+async function uploadSplashToGitHub(splashImage: string): Promise<boolean> {
+  if (!splashImage) {
+    console.log('No splash image provided, skipping upload');
+    return false;
+  }
+
+  // Extract base64 content from data URL if needed
+  let base64Content = splashImage;
+  if (splashImage.startsWith('data:')) {
+    base64Content = splashImage.split(',')[1];
+  }
+
+  console.log('Uploading splash image to GitHub...');
+  
+  return await updateGitHubFile(
+    'assets/splash.png',
+    base64Content,
+    'Update splash.png for new app build'
+  );
+}
+
 // Update app.json with app-specific configuration
 async function updateAppConfig(config: BuildRequest): Promise<boolean> {
+  const splashBgColor = config.splashConfig?.backgroundColor || "#ffffff";
+  const splashResizeMode = config.splashConfig?.resizeMode || "contain";
+  
   const appJson = {
     expo: {
       name: config.appName,
@@ -144,8 +173,8 @@ async function updateAppConfig(config: BuildRequest): Promise<boolean> {
       userInterfaceStyle: "automatic",
       splash: {
         image: "./assets/splash.png",
-        resizeMode: "contain",
-        backgroundColor: "#ffffff"
+        resizeMode: splashResizeMode,
+        backgroundColor: splashBgColor
       },
       assetBundlePatterns: ["**/*"],
       ios: {
@@ -155,7 +184,7 @@ async function updateAppConfig(config: BuildRequest): Promise<boolean> {
       android: {
         adaptiveIcon: {
           foregroundImage: "./assets/adaptive-icon.png",
-          backgroundColor: "#ffffff"
+          backgroundColor: splashBgColor
         },
         package: config.packageId
       },
@@ -202,12 +231,19 @@ serve(async (req) => {
       console.log('Icon upload result:', iconUploadSuccess);
     }
 
-    // Step 2: Update app.json with user's configuration
+    // Step 2: Upload splash screen image to GitHub
+    if (buildRequest.splashConfig?.image) {
+      console.log('Uploading splash image to GitHub...');
+      const splashUploadSuccess = await uploadSplashToGitHub(buildRequest.splashConfig.image);
+      console.log('Splash upload result:', splashUploadSuccess);
+    }
+
+    // Step 3: Update app.json with user's configuration
     console.log('Updating app.json in GitHub...');
     const appJsonSuccess = await updateAppConfig(buildRequest);
     console.log('App.json update result:', appJsonSuccess);
 
-    // Step 3: Update App.js with navigation config
+    // Step 4: Update App.js with navigation config
     console.log('Updating App.js in GitHub...');
     const appCodeSuccess = await updateAppCode(buildRequest);
     console.log('App.js update result:', appCodeSuccess);
@@ -219,7 +255,7 @@ serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Step 4: Trigger Codemagic builds
+    // Step 5: Trigger Codemagic builds
     const buildResults = [];
 
     for (const platform of buildRequest.platforms) {
@@ -302,6 +338,7 @@ serve(async (req) => {
       snackId: generateSnackId(buildRequest),
       githubUpdates: {
         icon: !!buildRequest.appIcon,
+        splash: !!buildRequest.splashConfig?.image,
         appJson: true,
         appJs: true,
       },
