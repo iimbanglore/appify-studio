@@ -1,0 +1,256 @@
+import { useState } from "react";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import StepIndicator from "@/components/builder/StepIndicator";
+import WebsiteUrlStep from "@/components/builder/WebsiteUrlStep";
+import AppDetailsStep from "@/components/builder/AppDetailsStep";
+import IconUploadStep from "@/components/builder/IconUploadStep";
+import NavigationStep from "@/components/builder/NavigationStep";
+import KeystoreStep from "@/components/builder/KeystoreStep";
+import PlatformStep from "@/components/builder/PlatformStep";
+import BuildSuccessStep from "@/components/builder/BuildSuccessStep";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+
+const steps = [
+  { id: 1, title: "Website" },
+  { id: 2, title: "Details" },
+  { id: 3, title: "Icon" },
+  { id: 4, title: "Navigation" },
+  { id: 5, title: "Keystore" },
+  { id: 6, title: "Build" },
+];
+
+interface NavItem {
+  id: string;
+  label: string;
+  url: string;
+  icon: string;
+}
+
+interface KeystoreConfig {
+  alias: string;
+  password: string;
+  validity: string;
+  organization: string;
+  country: string;
+}
+
+const Builder = () => {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [buildComplete, setBuildComplete] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false);
+
+  // Step 1: Website URL
+  const [websiteUrl, setWebsiteUrl] = useState("");
+
+  // Step 2: App Details
+  const [appName, setAppName] = useState("");
+  const [packageId, setPackageId] = useState("");
+  const [appDescription, setAppDescription] = useState("");
+
+  // Step 3: App Icon
+  const [appIcon, setAppIcon] = useState<string | null>(null);
+
+  // Step 4: Navigation
+  const [enableNavigation, setEnableNavigation] = useState(false);
+  const [navItems, setNavItems] = useState<NavItem[]>([
+    { id: "1", label: "Home", url: "/", icon: "home" },
+  ]);
+
+  // Step 5: Keystore
+  const [generateKeystore, setGenerateKeystore] = useState(false);
+  const [keystoreConfig, setKeystoreConfig] = useState<KeystoreConfig>({
+    alias: "",
+    password: "",
+    validity: "25",
+    organization: "",
+    country: "",
+  });
+
+  // Step 6: Platform
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+
+  const canProceed = () => {
+    switch (currentStep) {
+      case 1:
+        return websiteUrl.length > 0;
+      case 2:
+        return appName.length > 0 && packageId.length > 0;
+      case 3:
+        return true; // Icon is optional
+      case 4:
+        return true; // Navigation is optional
+      case 5:
+        return true; // Keystore is optional
+      case 6:
+        return selectedPlatforms.length > 0;
+      default:
+        return false;
+    }
+  };
+
+  const nextStep = () => {
+    if (currentStep < 6 && canProceed()) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleBuild = () => {
+    setIsBuilding(true);
+    // Simulate build process
+    setTimeout(() => {
+      setIsBuilding(false);
+      setBuildComplete(true);
+    }, 3000);
+  };
+
+  const handleStartOver = () => {
+    setCurrentStep(1);
+    setBuildComplete(false);
+    setWebsiteUrl("");
+    setAppName("");
+    setPackageId("");
+    setAppDescription("");
+    setAppIcon(null);
+    setEnableNavigation(false);
+    setNavItems([{ id: "1", label: "Home", url: "/", icon: "home" }]);
+    setGenerateKeystore(false);
+    setKeystoreConfig({
+      alias: "",
+      password: "",
+      validity: "25",
+      organization: "",
+      country: "",
+    });
+    setSelectedPlatforms([]);
+  };
+
+  const renderStep = () => {
+    if (buildComplete) {
+      return (
+        <BuildSuccessStep
+          selectedPlatforms={selectedPlatforms}
+          appName={appName}
+          onStartOver={handleStartOver}
+        />
+      );
+    }
+
+    switch (currentStep) {
+      case 1:
+        return (
+          <WebsiteUrlStep
+            websiteUrl={websiteUrl}
+            setWebsiteUrl={setWebsiteUrl}
+          />
+        );
+      case 2:
+        return (
+          <AppDetailsStep
+            appName={appName}
+            setAppName={setAppName}
+            packageId={packageId}
+            setPackageId={setPackageId}
+            appDescription={appDescription}
+            setAppDescription={setAppDescription}
+          />
+        );
+      case 3:
+        return <IconUploadStep appIcon={appIcon} setAppIcon={setAppIcon} />;
+      case 4:
+        return (
+          <NavigationStep
+            enableNavigation={enableNavigation}
+            setEnableNavigation={setEnableNavigation}
+            navItems={navItems}
+            setNavItems={setNavItems}
+          />
+        );
+      case 5:
+        return (
+          <KeystoreStep
+            generateKeystore={generateKeystore}
+            setGenerateKeystore={setGenerateKeystore}
+            keystoreConfig={keystoreConfig}
+            setKeystoreConfig={setKeystoreConfig}
+          />
+        );
+      case 6:
+        return (
+          <PlatformStep
+            selectedPlatforms={selectedPlatforms}
+            setSelectedPlatforms={setSelectedPlatforms}
+            isBuilding={isBuilding}
+            onBuild={handleBuild}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+
+      <main className="flex-1 pt-24 pb-12">
+        <div className="container mx-auto px-4 max-w-4xl">
+          {/* Step Indicator */}
+          {!buildComplete && (
+            <div className="mb-12">
+              <StepIndicator steps={steps} currentStep={currentStep} />
+            </div>
+          )}
+
+          {/* Step Content */}
+          <div className="glass-card rounded-2xl p-6 md:p-10 min-h-[500px]">
+            {renderStep()}
+          </div>
+
+          {/* Navigation Buttons */}
+          {!buildComplete && currentStep !== 6 && (
+            <div className="flex justify-between mt-6">
+              <Button
+                variant="ghost"
+                onClick={prevStep}
+                disabled={currentStep === 1}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+
+              <Button
+                variant="hero"
+                onClick={nextStep}
+                disabled={!canProceed()}
+              >
+                Continue
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          )}
+
+          {!buildComplete && currentStep === 6 && (
+            <div className="flex justify-start mt-6">
+              <Button variant="ghost" onClick={prevStep}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+};
+
+export default Builder;
