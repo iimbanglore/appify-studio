@@ -380,7 +380,7 @@ const navItems = ${navItemsJson};
 function WebViewScreen({ url }) {
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <WebView
         source={{ uri: url }}
         style={styles.webview}
@@ -390,6 +390,7 @@ function WebViewScreen({ url }) {
         scalesPageToFit={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
       />
     </SafeAreaView>
   );
@@ -399,10 +400,13 @@ function AppNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           const item = navItems.find(n => n.label === route.name);
           return <Ionicons name={item?.icon || 'home'} size={size} color={color} />;
         },
+        tabBarActiveTintColor: '#007AFF',
+        tabBarInactiveTintColor: '#8E8E93',
       })}
     >
       {navItems.map((item, index) => (
@@ -427,23 +431,22 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    backgroundColor: '#000',
   },
   webview: {
     flex: 1,
   },
 });`;
   } else {
-    // Without navigation - simple WebView
+    // Without navigation - simple WebView (full-screen)
     return `import React from 'react';
-import { StatusBar, StyleSheet, SafeAreaView, Platform } from 'react-native';
+import { StatusBar, StyleSheet, View, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <WebView
         source={{ uri: '${config.websiteUrl}' }}
         style={styles.webview}
@@ -453,19 +456,20 @@ export default function App() {
         scalesPageToFit={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    backgroundColor: '#000',
   },
   webview: {
     flex: 1,
+    marginTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
 });`;
   }
