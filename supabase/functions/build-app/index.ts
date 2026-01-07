@@ -394,20 +394,11 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Install EAS CLI', script: 'npm install -g eas-cli' },
-        { name: 'Configure EAS', script: `cat > eas.json << 'EOF'
-{
-  "cli": { "version": ">= 5.0.0" },
-  "build": {
-    "preview": {
-      "android": { "buildType": "apk", "gradleCommand": ":app:assembleRelease" }
-    }
-  }
-}
-EOF` },
-        { name: 'Build Android APK with EAS', script: 'npx eas build --platform android --profile preview --local --non-interactive --output ./app-release.apk' },
+        { name: 'Generate Android project', script: 'npx expo prebuild --platform android --clean --no-install' },
+        { name: 'Set up local.properties', script: 'echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties' },
+        { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease --no-daemon' },
       ],
-      artifacts: ['./*.apk'],
+      artifacts: ['android/app/build/outputs/**/*.apk'],
     };
   } else {
     return {
@@ -419,23 +410,16 @@ EOF` },
           BUNDLE_ID: config.packageId,
         },
         node: '18.17.0',
-        xcode: 'latest',
+        xcode: '15.0',
         cocoapods: 'default',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Install EAS CLI', script: 'npm install -g eas-cli' },
-        { name: 'Configure EAS', script: `cat > eas.json << 'EOF'
-{
-  "cli": { "version": ">= 5.0.0" },
-  "build": {
-    "preview": { "ios": { "simulator": true } }
-  }
-}
-EOF` },
-        { name: 'Build iOS with EAS', script: 'npx eas build --platform ios --profile preview --local --non-interactive --output ./app-release.app' },
+        { name: 'Generate iOS project', script: 'npx expo prebuild --platform ios --clean --no-install' },
+        { name: 'Install CocoaPods', script: 'cd ios && pod install' },
+        { name: 'Build iOS', script: 'cd ios && xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO' },
       ],
-      artifacts: ['./*.app', './*.ipa'],
+      artifacts: ['ios/build/**/*.xcarchive'],
     };
   }
 }

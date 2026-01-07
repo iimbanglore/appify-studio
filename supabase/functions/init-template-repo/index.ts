@@ -264,7 +264,7 @@ web-build/
 .env`;
     results['.gitignore'] = await createGitHubFile('.gitignore', gitignore, 'Add .gitignore');
 
-    // 6. codemagic.yaml - Using EAS Build for proper Expo builds
+    // 6. codemagic.yaml - Using expo prebuild with SDK 49 (no auth required)
     const codemagicYaml = `workflows:
   android-workflow:
     name: Android Build
@@ -280,35 +280,18 @@ web-build/
     scripts:
       - name: Install dependencies
         script: npm install
-      - name: Install EAS CLI
-        script: npm install -g eas-cli
-      - name: Configure EAS
+      - name: Generate Android project
+        script: npx expo prebuild --platform android --clean --no-install
+      - name: Install Android dependencies
+        script: cd android && ./gradlew --version
+      - name: Set up local.properties
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Build Android APK
         script: |
-          cat > eas.json << 'EOF'
-          {
-            "cli": {
-              "version": ">= 5.0.0"
-            },
-            "build": {
-              "preview": {
-                "android": {
-                  "buildType": "apk",
-                  "gradleCommand": ":app:assembleRelease"
-                }
-              },
-              "production": {
-                "android": {
-                  "buildType": "app-bundle"
-                }
-              }
-            }
-          }
-          EOF
-      - name: Build Android APK with EAS
-        script: |
-          npx eas build --platform android --profile preview --local --non-interactive --output ./app-release.apk
+          cd android
+          ./gradlew assembleRelease --no-daemon
     artifacts:
-      - ./*.apk
+      - android/app/build/outputs/**/*.apk
     publishing:
       email:
         recipients:
@@ -328,38 +311,21 @@ web-build/
       vars:
         BUNDLE_ID: com.app.webview
       node: 18.17.0
-      xcode: latest
+      xcode: 15.0
       cocoapods: default
     scripts:
       - name: Install dependencies
         script: npm install
-      - name: Install EAS CLI
-        script: npm install -g eas-cli
-      - name: Configure EAS
+      - name: Generate iOS project
+        script: npx expo prebuild --platform ios --clean --no-install
+      - name: Install CocoaPods
+        script: cd ios && pod install
+      - name: Build iOS
         script: |
-          cat > eas.json << 'EOF'
-          {
-            "cli": {
-              "version": ">= 5.0.0"
-            },
-            "build": {
-              "preview": {
-                "ios": {
-                  "simulator": true
-                }
-              },
-              "production": {
-                "ios": {}
-              }
-            }
-          }
-          EOF
-      - name: Build iOS with EAS
-        script: |
-          npx eas build --platform ios --profile preview --local --non-interactive --output ./app-release.app
+          cd ios
+          xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
     artifacts:
-      - ./*.app
-      - ./*.ipa
+      - ios/build/**/*.xcarchive
     publishing:
       email:
         recipients:
