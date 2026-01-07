@@ -265,6 +265,9 @@ web-build/
     results['.gitignore'] = await createGitHubFile('.gitignore', gitignore, 'Add .gitignore');
 
     // 6. codemagic.yaml - Using expo prebuild with SDK 49 (no auth required)
+    // Includes webhook for real-time build status updates
+    const webhookUrl = 'https://viudzmarsxxblbdaxfzu.supabase.co/functions/v1/codemagic-webhook';
+    
     const codemagicYaml = `workflows:
   android-workflow:
     name: Android Build
@@ -299,6 +302,19 @@ web-build/
         notify:
           success: true
           failure: true
+      scripts:
+        - name: Send webhook notification
+          script: |
+            curl -X POST "${webhookUrl}" \\
+              -H "Content-Type: application/json" \\
+              -d '{
+                "buildId": "'"\$CM_BUILD_ID"'",
+                "appId": "'"\$CM_PROJECT_ID"'",
+                "workflowId": "android-workflow",
+                "branch": "'"\$CM_BRANCH"'",
+                "status": "'"\$CM_BUILD_STEP_STATUS"'",
+                "artefacts": []
+              }'
 
   ios-workflow:
     name: iOS Build
@@ -332,8 +348,21 @@ web-build/
           - your-email@example.com
         notify:
           success: true
-          failure: true`;
-    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Add codemagic.yaml');
+          failure: true
+      scripts:
+        - name: Send webhook notification
+          script: |
+            curl -X POST "${webhookUrl}" \\
+              -H "Content-Type: application/json" \\
+              -d '{
+                "buildId": "'"\$CM_BUILD_ID"'",
+                "appId": "'"\$CM_PROJECT_ID"'",
+                "workflowId": "ios-workflow",
+                "branch": "'"\$CM_BRANCH"'",
+                "status": "'"\$CM_BUILD_STEP_STATUS"'",
+                "artefacts": []
+              }'`;
+    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Add codemagic.yaml with webhook');
 
     // 7. README.md
     const readme = `# WebView App Template
