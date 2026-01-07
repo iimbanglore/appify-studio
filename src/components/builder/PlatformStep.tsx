@@ -160,7 +160,7 @@ const PlatformStep = ({
             {isBuilding ? (
               <>
                 <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
-                Building with Codemagic...
+                Building with AppdesignLab Engine...
               </>
             ) : (
               <>
@@ -173,7 +173,7 @@ const PlatformStep = ({
           {/* Info */}
           <div className="bg-accent/50 rounded-lg p-3 text-center">
             <p className="text-xs text-muted-foreground">
-              Builds are processed via Codemagic CI/CD. Estimated time: 5-15 minutes per platform.
+              Builds are processed via AppdesignLab Engine by Ask2mesolution. Estimated time: 5-15 minutes per platform.
             </p>
           </div>
         </div>
