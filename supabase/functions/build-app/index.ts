@@ -389,16 +389,25 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
         vars: {
           PACKAGE_NAME: config.packageId,
         },
+        node: '18.17.0',
         java: '17',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Install Expo CLI', script: 'npm install -g expo-cli eas-cli' },
-        { name: 'Generate native projects', script: 'npx expo prebuild --platform android --clean' },
-        { name: 'Set up local.properties', script: 'echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties' },
-        { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease' },
+        { name: 'Install EAS CLI', script: 'npm install -g eas-cli' },
+        { name: 'Configure EAS', script: `cat > eas.json << 'EOF'
+{
+  "cli": { "version": ">= 5.0.0" },
+  "build": {
+    "preview": {
+      "android": { "buildType": "apk", "gradleCommand": ":app:assembleRelease" }
+    }
+  }
+}
+EOF` },
+        { name: 'Build Android APK with EAS', script: 'npx eas build --platform android --profile preview --local --non-interactive --output ./app-release.apk' },
       ],
-      artifacts: ['android/app/build/outputs/**/*.apk'],
+      artifacts: ['./*.apk'],
     };
   } else {
     return {
@@ -409,15 +418,24 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
         vars: {
           BUNDLE_ID: config.packageId,
         },
+        node: '18.17.0',
+        xcode: 'latest',
+        cocoapods: 'default',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
-        { name: 'Install Expo CLI', script: 'npm install -g expo-cli eas-cli' },
-        { name: 'Generate native projects', script: 'npx expo prebuild --platform ios --clean' },
-        { name: 'Install CocoaPods', script: 'cd ios && pod install' },
-        { name: 'Build iOS', script: 'xcodebuild -workspace ios/*.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive' },
+        { name: 'Install EAS CLI', script: 'npm install -g eas-cli' },
+        { name: 'Configure EAS', script: `cat > eas.json << 'EOF'
+{
+  "cli": { "version": ">= 5.0.0" },
+  "build": {
+    "preview": { "ios": { "simulator": true } }
+  }
+}
+EOF` },
+        { name: 'Build iOS with EAS', script: 'npx eas build --platform ios --profile preview --local --non-interactive --output ./app-release.app' },
       ],
-      artifacts: ['ios/build/**/*.ipa', 'ios/build/**/*.xcarchive'],
+      artifacts: ['./*.app', './*.ipa'],
     };
   }
 }
