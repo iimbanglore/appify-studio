@@ -155,6 +155,9 @@ serve(async (req) => {
         "react-native-webview": "13.6.2",
         "@react-navigation/native": "^6.1.9",
         "@react-navigation/bottom-tabs": "^6.5.11",
+        "@react-navigation/drawer": "^6.6.6",
+        "react-native-gesture-handler": "~2.12.0",
+        "react-native-reanimated": "~3.3.0",
         "react-native-screens": "~3.22.0",
         "react-native-safe-area-context": "4.6.3",
         "@expo/vector-icons": "^13.0.0"
