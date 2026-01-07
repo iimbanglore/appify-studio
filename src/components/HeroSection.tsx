@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Smartphone, Apple, Play } from "lucide-react";
+import { ArrowRight, Smartphone, Apple, Play, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
+import appifyLogo from "@/assets/appify-logo.png";
 
 const HeroSection = () => {
   return (
@@ -21,28 +22,29 @@ const HeroSection = () => {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
               </span>
-              No coding required
+              Powered by Ask2mesolution.com
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              Convert Any Website Into a
+              <span className="gradient-text">Appify</span> Your Website Into a
               <span className="gradient-text"> Native App</span>
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 mb-8">
-              Transform your website into a professional mobile app in minutes. 
-              Generate store-ready APK and IPA files with custom icons, navigation, and more.
+              Transform any website into a professional mobile app in minutes with Appify. 
+              Generate store-ready APK and IPA files with custom icons, splash screens, and seamless navigation.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-12">
               <Link to="/builder">
                 <Button variant="hero" size="xl" className="w-full sm:w-auto">
-                  Start Building Free
+                  <Zap className="w-5 h-5" />
+                  Start Building Now
                   <ArrowRight className="w-5 h-5" />
                 </Button>
               </Link>
               <Button variant="hero-outline" size="xl" className="w-full sm:w-auto">
-                Watch Demo
+                See How It Works
               </Button>
             </div>
 
@@ -70,12 +72,10 @@ const HeroSection = () => {
                   <div className="h-full bg-gradient-to-br from-primary/20 to-primary/5 p-4 pt-10">
                     <div className="bg-card rounded-xl p-4 shadow-lg mb-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-                          <Smartphone className="w-5 h-5 text-primary" />
-                        </div>
+                        <img src={appifyLogo} alt="Appify" className="w-10 h-10 rounded-xl" />
                         <div>
-                          <div className="h-3 w-24 bg-foreground/10 rounded" />
-                          <div className="h-2 w-16 bg-foreground/5 rounded mt-1" />
+                          <div className="text-xs font-semibold text-foreground">Appify</div>
+                          <div className="text-[10px] text-muted-foreground">by Ask2mesolution</div>
                         </div>
                       </div>
                       <div className="h-2 w-full bg-foreground/5 rounded mb-2" />
