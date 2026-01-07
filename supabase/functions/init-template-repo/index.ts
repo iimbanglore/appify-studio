@@ -267,16 +267,21 @@ web-build/
   android-workflow:
     name: Android Build
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 120
     environment:
       groups:
         - app_credentials
       vars:
         PACKAGE_NAME: com.app.webview
       node: 18.17.0
+      java: 17
     scripts:
       - name: Install dependencies
         script: npm install
+      - name: Install Expo CLI
+        script: npm install -g expo-cli eas-cli
+      - name: Generate native projects
+        script: npx expo prebuild --platform android --clean
       - name: Set up local.properties
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
       - name: Build Android
@@ -296,7 +301,7 @@ web-build/
   ios-workflow:
     name: iOS Build
     instance_type: mac_mini_m2
-    max_build_duration: 90
+    max_build_duration: 120
     environment:
       groups:
         - app_credentials
@@ -309,6 +314,10 @@ web-build/
     scripts:
       - name: Install dependencies
         script: npm install
+      - name: Install Expo CLI
+        script: npm install -g expo-cli eas-cli
+      - name: Generate native projects
+        script: npx expo prebuild --platform ios --clean
       - name: Install CocoaPods
         script: |
           cd ios
@@ -316,7 +325,7 @@ web-build/
       - name: Build iOS
         script: |
           cd ios
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
+          xcodebuild -workspace *.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
     artifacts:
       - ios/build/**/*.ipa
     publishing:

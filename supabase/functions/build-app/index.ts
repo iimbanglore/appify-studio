@@ -389,11 +389,13 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
         vars: {
           PACKAGE_NAME: config.packageId,
         },
+        java: '17',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
         { name: 'Install Expo CLI', script: 'npm install -g expo-cli eas-cli' },
         { name: 'Generate native projects', script: 'npx expo prebuild --platform android --clean' },
+        { name: 'Set up local.properties', script: 'echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties' },
         { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease' },
       ],
       artifacts: ['android/app/build/outputs/**/*.apk'],
