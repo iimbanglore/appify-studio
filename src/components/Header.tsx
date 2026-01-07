@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Smartphone, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import appifyLogo from "@/assets/appify-logo.png";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -12,10 +13,8 @@ const Header = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-              <Smartphone className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold">WebToApp</span>
+            <img src={appifyLogo} alt="Appify Logo" className="w-9 h-9 rounded-xl" />
+            <span className="text-xl font-bold">Appify</span>
           </Link>
 
           {/* Desktop Navigation */}

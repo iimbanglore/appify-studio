@@ -1,5 +1,5 @@
-import { Smartphone } from "lucide-react";
 import { Link } from "react-router-dom";
+import appifyLogo from "@/assets/appify-logo.png";
 
 const Footer = () => {
   return (
@@ -9,10 +9,8 @@ const Footer = () => {
           {/* Brand */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-                <Smartphone className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold">WebToApp</span>
+              <img src={appifyLogo} alt="Appify Logo" className="w-9 h-9 rounded-xl" />
+              <span className="text-xl font-bold">Appify</span>
             </Link>
             <p className="text-background/60 text-sm">
               The fastest way to convert any website into a native mobile app.
@@ -53,7 +51,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-background/10 mt-12 pt-8 text-center text-background/40 text-sm">
-          <p>© {new Date().getFullYear()} WebToApp. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Appify by Ask2mesolution.com. All rights reserved.</p>
         </div>
       </div>
     </footer>
