@@ -324,14 +324,39 @@ serve(async (req) => {
 });
 
 function generateAppCode(config: BuildRequest): string {
-  const navCode = config.enableNavigation && config.navItems?.length ? `
+  const hasNav = config.enableNavigation && config.navItems && config.navItems.length > 0;
+  
+  if (hasNav) {
+    // With navigation
+    const navItemsJson = JSON.stringify(config.navItems);
+    return `import React from 'react';
+import { StatusBar, StyleSheet, SafeAreaView, Platform } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 const Tab = createBottomTabNavigator();
 
-const navItems = ${JSON.stringify(config.navItems)};
+const navItems = ${navItemsJson};
+
+function WebViewScreen({ url }) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <WebView
+        source={{ uri: url }}
+        style={styles.webview}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        startInLoadingState={true}
+        scalesPageToFit={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+      />
+    </SafeAreaView>
+  );
+}
 
 function AppNavigator() {
   return (
@@ -352,22 +377,38 @@ function AppNavigator() {
       ))}
     </Tab.Navigator>
   );
-}` : '';
+}
 
-  return `
-import React from 'react';
+export default function App() {
+  return (
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  webview: {
+    flex: 1,
+  },
+});`;
+  } else {
+    // Without navigation - simple WebView
+    return `import React from 'react';
 import { StatusBar, StyleSheet, SafeAreaView, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
-${navCode ? `import { NavigationContainer } from '@react-navigation/native';` : ''}
 
-${navCode}
-
-function WebViewScreen({ url = '${config.websiteUrl}' }) {
+export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <WebView
-        source={{ uri: url }}
+        source={{ uri: '${config.websiteUrl}' }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -380,16 +421,6 @@ function WebViewScreen({ url = '${config.websiteUrl}' }) {
   );
 }
 
-export default function App() {
-  ${config.enableNavigation && config.navItems?.length ? `
-  return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
-  );` : `
-  return <WebViewScreen />;`}
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -399,8 +430,8 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
   },
-});
-`.trim();
+});`;
+  }
 }
 
 function generateWorkflowConfig(config: BuildRequest, platform: string) {
