@@ -142,7 +142,7 @@ const Builder = () => {
         setBuildComplete(true);
         toast({
           title: "Build Started!",
-          description: "Your app build has been queued with Codemagic.",
+          description: "Your app build has been queued with AppdesignLab Engine.",
         });
       } else {
         throw new Error(data?.error || 'Build failed');
