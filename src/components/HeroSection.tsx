@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Smartphone, Apple, Play, Zap } from "lucide-react";
+import { ArrowRight, Apple, Play, Zap, Globe, Package, Timer } from "lucide-react";
 import { Link } from "react-router-dom";
 import appifyLogo from "@/assets/appify-logo.png";
 
@@ -11,6 +11,18 @@ const HeroSection = () => {
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl animate-pulse-slow" />
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-slow" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/3 rounded-full blur-3xl" />
+        
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 opacity-[0.02]">
+          <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="hero-grid" width="60" height="60" patternUnits="userSpaceOnUse">
+                <path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" strokeWidth="1"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#hero-grid)" />
+          </svg>
+        </div>
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
@@ -26,36 +38,55 @@ const HeroSection = () => {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              <span className="gradient-text">Appify</span> Your Website Into a
+              Convert Any Website to a
               <span className="gradient-text"> Native App</span>
+              <span className="block mt-2">in Under 5 Minutes</span>
             </h1>
 
-            <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 mb-8">
-              Transform any website into a professional mobile app in minutes with Appify. 
-              Generate store-ready APK and IPA files with custom icons, splash screens, and seamless navigation.
+            <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 mb-4">
+              Transform your website into a store-ready mobile app instantly. 
+              Generate APK, AAB bundles, and IPA files — no coding required.
             </p>
+
+            {/* Key Benefits */}
+            <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-8">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Timer className="w-4 h-4 text-primary" />
+                <span>5-minute conversion</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Package className="w-4 h-4 text-primary" />
+                <span>Store-ready files</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Globe className="w-4 h-4 text-primary" />
+                <span>Any website supported</span>
+              </div>
+            </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-12">
               <Link to="/builder">
                 <Button variant="hero" size="xl" className="w-full sm:w-auto">
                   <Zap className="w-5 h-5" />
-                  Start Building Now
+                  Start Building Free
                   <ArrowRight className="w-5 h-5" />
                 </Button>
               </Link>
-              <Button variant="hero-outline" size="xl" className="w-full sm:w-auto">
-                See How It Works
-              </Button>
+              <a href="#how-it-works">
+                <Button variant="hero-outline" size="xl" className="w-full sm:w-auto">
+                  See How It Works
+                </Button>
+              </a>
             </div>
 
             {/* Platform Badges */}
             <div className="flex items-center gap-6 justify-center lg:justify-start text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Play className="w-5 h-5" />
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
+                <Play className="w-5 h-5 text-green-600" />
                 <span className="text-sm font-medium">Play Store Ready</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Apple className="w-5 h-5" />
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
+                <Apple className="w-5 h-5 text-gray-600" />
                 <span className="text-sm font-medium">App Store Ready</span>
               </div>
             </div>
@@ -74,8 +105,8 @@ const HeroSection = () => {
                       <div className="flex items-center gap-3 mb-3">
                         <img src={appifyLogo} alt="Appify" className="w-10 h-10 rounded-xl" />
                         <div>
-                          <div className="text-xs font-semibold text-foreground">Appify</div>
-                          <div className="text-[10px] text-muted-foreground">by Ask2mesolution</div>
+                          <div className="text-xs font-semibold text-foreground">Your App</div>
+                          <div className="text-[10px] text-muted-foreground">Powered by Appify</div>
                         </div>
                       </div>
                       <div className="h-2 w-full bg-foreground/5 rounded mb-2" />
@@ -103,8 +134,8 @@ const HeroSection = () => {
                     <Play className="w-4 h-4 text-green-600" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium">APK Ready</p>
-                    <p className="text-[10px] text-muted-foreground">12.4 MB</p>
+                    <p className="text-xs font-medium">APK + AAB</p>
+                    <p className="text-[10px] text-muted-foreground">Ready to publish</p>
                   </div>
                 </div>
               </div>
@@ -116,7 +147,20 @@ const HeroSection = () => {
                   </div>
                   <div>
                     <p className="text-xs font-medium">IPA Ready</p>
-                    <p className="text-[10px] text-muted-foreground">18.2 MB</p>
+                    <p className="text-[10px] text-muted-foreground">App Store file</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timer Badge */}
+              <div className="absolute -right-4 bottom-1/4 glass-card rounded-xl p-3 animate-fade-in" style={{ animationDelay: '0.7s' }}>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                    <Timer className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Built in</p>
+                    <p className="text-[10px] text-primary font-bold">&lt; 5 min</p>
                   </div>
                 </div>
               </div>
