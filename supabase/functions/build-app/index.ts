@@ -619,16 +619,28 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
           BUNDLE_ID: config.packageId,
         },
         node: '18.17.0',
-        xcode: '15.0',
+        xcode: '15.4',
         cocoapods: 'default',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
         { name: 'Generate iOS project', script: 'npx expo prebuild --platform ios --clean --no-install' },
         { name: 'Install CocoaPods', script: 'cd ios && pod install' },
-        { name: 'Build iOS', script: 'cd ios && xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO' },
+        { name: 'Set up code signing', script: 'xcode-project use-profiles' },
+        { name: 'Build iOS Archive', script: 'cd ios && xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive' },
+        { name: 'Export IPA', script: 'xcodebuild -exportArchive -archivePath $CM_BUILD_DIR/build/App.xcarchive -exportOptionsPlist $CM_BUILD_DIR/ios/exportOptions.plist -exportPath $CM_BUILD_DIR/build/ipa' },
       ],
-      artifacts: ['ios/build/**/*.xcarchive'],
+      artifacts: [
+        'build/ipa/*.ipa',
+        'build/*.xcarchive'
+      ],
+      publishing: {
+        app_store_connect: {
+          api_key: '$APP_STORE_CONNECT_PRIVATE_KEY',
+          key_id: '$APP_STORE_CONNECT_KEY_IDENTIFIER',
+          issuer_id: '$APP_STORE_CONNECT_ISSUER_ID',
+        }
+      }
     };
   }
 }
