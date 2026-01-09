@@ -366,10 +366,10 @@ function generateAppCode(config: BuildRequest): string {
   const isDrawer = config.navigationType === "drawer";
   
   if (hasNav && isDrawer) {
-    // Drawer Navigation
+    // Drawer Navigation with Pull To Refresh
     const navItemsJson = JSON.stringify(config.navItems);
-    return `import React from 'react';
-import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
+    return `import React, { useState, useRef, useCallback } from 'react';
+import { StatusBar, StyleSheet, View, Text, RefreshControl, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
@@ -380,20 +380,56 @@ const Drawer = createDrawerNavigator();
 const navItems = ${navItemsJson};
 
 function WebViewScreen({ url }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const webViewRef = useRef(null);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <WebView
-        source={{ uri: url }}
-        style={styles.webview}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        scalesPageToFit={true}
-        allowsInlineMediaPlayback={true}
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo={true}
-      />
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+            progressBackgroundColor="#1a1a1a"
+          />
+        }
+      >
+        <WebView
+          ref={webViewRef}
+          source={{ uri: url }}
+          style={styles.webview}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={false}
+          scalesPageToFit={true}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo={true}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          pullToRefreshEnabled={true}
+          nestedScrollEnabled={true}
+        />
+      </ScrollView>
     </View>
   );
 }
@@ -452,8 +488,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  scrollContainer: {
+    flex: 1,
+  },
   webview: {
     flex: 1,
+    height: '100%',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 14,
   },
   drawerContent: {
     flex: 1,
@@ -472,10 +528,10 @@ const styles = StyleSheet.create({
   },
 });`;
   } else if (hasNav) {
-    // Bottom Tab Navigation
+    // Bottom Tab Navigation with Pull To Refresh
     const navItemsJson = JSON.stringify(config.navItems);
-    return `import React from 'react';
-import { StatusBar, StyleSheet, SafeAreaView, Platform } from 'react-native';
+    return `import React, { useState, useRef, useCallback } from 'react';
+import { StatusBar, StyleSheet, SafeAreaView, RefreshControl, ScrollView, View, Text, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
@@ -486,20 +542,56 @@ const Tab = createBottomTabNavigator();
 const navItems = ${navItemsJson};
 
 function WebViewScreen({ url }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const webViewRef = useRef(null);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <WebView
-        source={{ uri: url }}
-        style={styles.webview}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        scalesPageToFit={true}
-        allowsInlineMediaPlayback={true}
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo={true}
-      />
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+            progressBackgroundColor="#1a1a1a"
+          />
+        }
+      >
+        <WebView
+          ref={webViewRef}
+          source={{ uri: url }}
+          style={styles.webview}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={false}
+          scalesPageToFit={true}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo={true}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          pullToRefreshEnabled={true}
+          nestedScrollEnabled={true}
+        />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -542,31 +634,87 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  scrollContainer: {
+    flex: 1,
+  },
   webview: {
     flex: 1,
+    height: '100%',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 14,
   },
 });`;
   } else {
-    // Without navigation - simple WebView (full-screen)
-    return `import React from 'react';
-import { StatusBar, StyleSheet, View, Platform } from 'react-native';
+    // Without navigation - simple WebView with Pull To Refresh
+    return `import React, { useState, useRef, useCallback } from 'react';
+import { StatusBar, StyleSheet, View, RefreshControl, ScrollView, Text, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export default function App() {
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const webViewRef = useRef(null);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <WebView
-        source={{ uri: '${config.websiteUrl}' }}
-        style={styles.webview}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        scalesPageToFit={true}
-        allowsInlineMediaPlayback={true}
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo={true}
-      />
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+            progressBackgroundColor="#1a1a1a"
+          />
+        }
+      >
+        <WebView
+          ref={webViewRef}
+          source={{ uri: '${config.websiteUrl}' }}
+          style={styles.webview}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={false}
+          scalesPageToFit={true}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo={true}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          pullToRefreshEnabled={true}
+          nestedScrollEnabled={true}
+        />
+      </ScrollView>
     </View>
   );
 }
@@ -576,9 +724,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  scrollContainer: {
+    flex: 1,
+  },
   webview: {
     flex: 1,
+    height: '100%',
     marginTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 14,
   },
 });`;
   }
