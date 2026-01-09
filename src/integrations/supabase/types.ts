@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       builds: {
         Row: {
+          aab_download_url: string | null
           app_name: string
           artifact_url: string | null
           build_id: string
@@ -31,6 +32,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          aab_download_url?: string | null
           app_name: string
           artifact_url?: string | null
           build_id: string
@@ -46,6 +48,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          aab_download_url?: string | null
           app_name?: string
           artifact_url?: string | null
           build_id?: string

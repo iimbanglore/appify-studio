@@ -56,6 +56,7 @@ const BuildSuccessStep = ({
             platform: string;
             status: string;
             download_url: string | null;
+            aab_download_url: string | null;
             error_message: string | null;
           };
 
@@ -66,6 +67,7 @@ const BuildSuccessStep = ({
                 ...build,
                 status: updatedBuild.status,
                 downloadUrl: updatedBuild.download_url,
+                aabDownloadUrl: updatedBuild.aab_download_url,
                 message: updatedBuild.error_message || build.message,
               };
             }
@@ -94,15 +96,25 @@ const BuildSuccessStep = ({
     const platform = type === 'ios' ? 'ios' : 'android';
     const build = builds.find(b => b.platform === platform);
     
-    // Check for real download URL
+    // Check for real download URL - AAB uses aabDownloadUrl, APK/IPA uses downloadUrl
     const downloadUrl = type === 'aab' ? build?.aabDownloadUrl : build?.downloadUrl;
-    if (downloadUrl && !downloadUrl.startsWith('#demo')) {
+    
+    if (downloadUrl && downloadUrl.startsWith('http')) {
+      // Real production download - open the actual artifact URL
+      console.log(`Downloading real ${type.toUpperCase()} from:`, downloadUrl);
       window.open(downloadUrl, '_blank');
       setDownloading(false);
       return;
     }
 
-    // Demo/simulated download
+    // If no real URL available, show message that build is still processing
+    if (!downloadUrl) {
+      console.log(`No download URL available for ${type.toUpperCase()} yet - build may still be processing`);
+      setDownloading(false);
+      return;
+    }
+
+    // Demo/simulated download (only for demo builds)
     setTimeout(() => {
       const extension = type === 'ios' ? 'ipa' : type;
       const mimeType = type === 'ios' 

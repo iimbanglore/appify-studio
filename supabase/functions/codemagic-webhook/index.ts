@@ -46,14 +46,45 @@ serve(async (req) => {
     // Determine platform from workflowId
     const platform = payload.workflowId?.includes('android') ? 'android' : 'ios';
 
-    // Find download URL from artifacts
+    // Find download URLs from artifacts - separate APK and AAB
     let downloadUrl: string | null = null;
+    let aabDownloadUrl: string | null = null;
+    
     if (payload.artefacts && payload.artefacts.length > 0) {
-      const artifact = payload.artefacts.find(a => 
-        a.type === 'apk' || a.type === 'ipa' || 
-        a.name?.endsWith('.apk') || a.name?.endsWith('.ipa')
-      ) || payload.artefacts[0];
-      downloadUrl = artifact?.url || null;
+      console.log('Processing artifacts:', JSON.stringify(payload.artefacts, null, 2));
+      
+      // Find APK artifact
+      const apkArtifact = payload.artefacts.find(a => 
+        a.type === 'apk' || a.name?.endsWith('.apk')
+      );
+      if (apkArtifact) {
+        downloadUrl = apkArtifact.url;
+        console.log('Found APK artifact:', apkArtifact.name, apkArtifact.url);
+      }
+      
+      // Find AAB artifact
+      const aabArtifact = payload.artefacts.find(a => 
+        a.type === 'aab' || a.name?.endsWith('.aab')
+      );
+      if (aabArtifact) {
+        aabDownloadUrl = aabArtifact.url;
+        console.log('Found AAB artifact:', aabArtifact.name, aabArtifact.url);
+      }
+      
+      // Find IPA artifact for iOS
+      const ipaArtifact = payload.artefacts.find(a => 
+        a.type === 'ipa' || a.name?.endsWith('.ipa')
+      );
+      if (ipaArtifact && !downloadUrl) {
+        downloadUrl = ipaArtifact.url;
+        console.log('Found IPA artifact:', ipaArtifact.name, ipaArtifact.url);
+      }
+      
+      // Fallback to first artifact if no specific type found
+      if (!downloadUrl && payload.artefacts.length > 0) {
+        downloadUrl = payload.artefacts[0].url;
+        console.log('Using fallback artifact:', payload.artefacts[0].name);
+      }
     }
 
     // Check if build exists
@@ -65,12 +96,13 @@ serve(async (req) => {
 
     if (existingBuild) {
       // Update existing build
-      console.log(`Updating build ${payload.buildId} to status: ${status}`);
+      console.log(`Updating build ${payload.buildId} to status: ${status}, APK: ${downloadUrl}, AAB: ${aabDownloadUrl}`);
       const { error: updateError } = await supabase
         .from('builds')
         .update({
           status,
           download_url: downloadUrl,
+          aab_download_url: aabDownloadUrl,
           artifact_url: downloadUrl,
           error_message: payload.error || null,
           started_at: payload.startedAt || null,
@@ -93,6 +125,7 @@ serve(async (req) => {
           status,
           app_name: 'Unknown App', // Will be updated from build-app
           download_url: downloadUrl,
+          aab_download_url: aabDownloadUrl,
           artifact_url: downloadUrl,
           error_message: payload.error || null,
           started_at: payload.startedAt || null,
