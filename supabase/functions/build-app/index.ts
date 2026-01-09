@@ -602,8 +602,12 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
         { name: 'Generate Android project', script: 'npx expo prebuild --platform android --clean --no-install' },
         { name: 'Set up local.properties', script: 'echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties' },
         { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease --no-daemon' },
+        { name: 'Build Android App Bundle (AAB)', script: 'cd android && ./gradlew bundleRelease --no-daemon' },
       ],
-      artifacts: ['android/app/build/outputs/**/*.apk'],
+      artifacts: [
+        'android/app/build/outputs/**/*.apk',
+        'android/app/build/outputs/**/*.aab'
+      ],
     };
   } else {
     return {
