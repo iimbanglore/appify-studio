@@ -37,6 +37,7 @@ interface BuildRequest {
     country: string;
   };
   platforms: string[];
+  userId?: string;
 }
 
 // Update GitHub repo file via GitHub API
@@ -314,6 +315,7 @@ serve(async (req) => {
           status,
           app_name: buildRequest.appName,
           package_id: buildRequest.packageId,
+          user_id: buildRequest.userId || null,
         });
 
       if (insertError) {
