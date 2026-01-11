@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import StepIndicator from "@/components/builder/StepIndicator";
@@ -13,7 +14,8 @@ import BuildSuccessStep from "@/components/builder/BuildSuccessStep";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
 const steps = [
   { id: 1, title: "Website" },
@@ -50,11 +52,20 @@ interface BuildResult {
 }
 
 const Builder = () => {
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [buildComplete, setBuildComplete] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildResults, setBuildResults] = useState<BuildResult[]>([]);
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    }
+  }, [user, authLoading, navigate]);
 
   // Step 1: Website URL
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -128,6 +139,11 @@ const Builder = () => {
   };
 
   const handleBuild = async () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    
     setIsBuilding(true);
     
     try {
@@ -144,6 +160,7 @@ const Builder = () => {
           navItems,
           keystoreConfig: generateKeystore ? keystoreConfig : null,
           platforms: selectedPlatforms,
+          userId: user.id,
         },
       });
 
@@ -268,6 +285,16 @@ const Builder = () => {
         return null;
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

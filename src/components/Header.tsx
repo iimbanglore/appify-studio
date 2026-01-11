@@ -1,11 +1,14 @@
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { Menu, X, User } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import appifyLogo from "@/assets/appify-logo.png";
+import { useAuth } from "@/hooks/useAuth";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-card border-b">
@@ -35,9 +38,27 @@ const Header = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm">
-              Sign In
-            </Button>
+            {!loading && (
+              <>
+                {user ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate('/dashboard')}
+                    className="gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    Dashboard
+                  </Button>
+                ) : (
+                  <Link to="/auth">
+                    <Button variant="ghost" size="sm">
+                      Sign In
+                    </Button>
+                  </Link>
+                )}
+              </>
+            )}
             <Link to="/builder">
               <Button variant="hero" size="sm">
                 Get Started
@@ -91,10 +112,25 @@ const Header = () => {
                 Pricing
               </a>
               <div className="flex flex-col gap-2 pt-4 border-t border-border">
-                <Button variant="ghost" className="justify-start">
-                  Sign In
-                </Button>
-                <Link to="/builder">
+                {!loading && (
+                  <>
+                    {user ? (
+                      <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full justify-start gap-2">
+                          <User className="w-4 h-4" />
+                          Dashboard
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full justify-start">
+                          Sign In
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                )}
+                <Link to="/builder" onClick={() => setMobileMenuOpen(false)}>
                   <Button variant="hero" className="w-full">
                     Get Started
                   </Button>
