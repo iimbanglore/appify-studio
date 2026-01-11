@@ -30,6 +30,7 @@ export type Database = {
           started_at: string | null
           status: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           aab_download_url?: string | null
@@ -46,6 +47,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           aab_download_url?: string | null
@@ -62,6 +64,40 @@ export type Database = {
           started_at?: string | null
           status?: string
           updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          mobile_number: string
+          updated_at: string
+          user_id: string
+          whatsapp_number: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id?: string
+          mobile_number: string
+          updated_at?: string
+          user_id: string
+          whatsapp_number: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          mobile_number?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp_number?: string
         }
         Relationships: []
       }
