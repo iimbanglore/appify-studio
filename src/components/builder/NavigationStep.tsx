@@ -3,16 +3,24 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Menu, Plus, Trash2, GripVertical, Home, User, Settings, Info, PanelLeft, LayoutGrid } from "lucide-react";
+import { Menu, Plus, Trash2, GripVertical, Home, User, Settings, Info, PanelLeft, LayoutGrid, Palette, ShoppingCart, Search, Bell, Heart, Mail, Calendar, Camera, Music, Video, Map, Phone, Star, Bookmark, Share2, Download, Upload } from "lucide-react";
 
-interface NavItem {
+export interface NavItem {
   id: string;
   label: string;
   url: string;
   icon: string;
 }
 
-type NavigationType = "tabs" | "drawer";
+export type NavigationType = "tabs" | "drawer";
+
+export interface NavBarStyle {
+  backgroundColor: string;
+  activeIconColor: string;
+  inactiveIconColor: string;
+  activeTextColor: string;
+  inactiveTextColor: string;
+}
 
 interface NavigationStepProps {
   enableNavigation: boolean;
@@ -21,6 +29,8 @@ interface NavigationStepProps {
   setNavItems: (items: NavItem[]) => void;
   navigationType: NavigationType;
   setNavigationType: (type: NavigationType) => void;
+  navBarStyle: NavBarStyle;
+  setNavBarStyle: (style: NavBarStyle) => void;
 }
 
 const iconOptions = [
@@ -29,6 +39,31 @@ const iconOptions = [
   { value: "settings", icon: Settings, label: "Settings" },
   { value: "info", icon: Info, label: "About" },
   { value: "menu", icon: Menu, label: "Menu" },
+  { value: "cart", icon: ShoppingCart, label: "Cart" },
+  { value: "search", icon: Search, label: "Search" },
+  { value: "notifications", icon: Bell, label: "Notifications" },
+  { value: "heart", icon: Heart, label: "Favorites" },
+  { value: "mail", icon: Mail, label: "Messages" },
+  { value: "calendar", icon: Calendar, label: "Calendar" },
+  { value: "camera", icon: Camera, label: "Camera" },
+  { value: "music", icon: Music, label: "Music" },
+  { value: "video", icon: Video, label: "Video" },
+  { value: "map", icon: Map, label: "Map" },
+  { value: "phone", icon: Phone, label: "Phone" },
+  { value: "star", icon: Star, label: "Star" },
+  { value: "bookmark", icon: Bookmark, label: "Bookmark" },
+  { value: "share", icon: Share2, label: "Share" },
+  { value: "download", icon: Download, label: "Download" },
+  { value: "upload", icon: Upload, label: "Upload" },
+];
+
+const presetColors = [
+  { name: "Dark", bg: "#1a1a1a", activeIcon: "#007AFF", inactiveIcon: "#8E8E93", activeText: "#007AFF", inactiveText: "#8E8E93" },
+  { name: "Light", bg: "#ffffff", activeIcon: "#007AFF", inactiveIcon: "#8E8E93", activeText: "#007AFF", inactiveText: "#8E8E93" },
+  { name: "Blue", bg: "#1e3a5f", activeIcon: "#60a5fa", inactiveIcon: "#94a3b8", activeText: "#60a5fa", inactiveText: "#94a3b8" },
+  { name: "Purple", bg: "#2d1b4e", activeIcon: "#a78bfa", inactiveIcon: "#9ca3af", activeText: "#a78bfa", inactiveText: "#9ca3af" },
+  { name: "Green", bg: "#1a2e1a", activeIcon: "#4ade80", inactiveIcon: "#9ca3af", activeText: "#4ade80", inactiveText: "#9ca3af" },
+  { name: "Orange", bg: "#2d1f0d", activeIcon: "#fb923c", inactiveIcon: "#9ca3af", activeText: "#fb923c", inactiveText: "#9ca3af" },
 ];
 
 const NavigationStep = ({
@@ -38,7 +73,11 @@ const NavigationStep = ({
   setNavItems,
   navigationType,
   setNavigationType,
+  navBarStyle,
+  setNavBarStyle,
 }: NavigationStepProps) => {
+  const [showAllIcons, setShowAllIcons] = useState<string | null>(null);
+
   const addNavItem = () => {
     const newItem: NavItem = {
       id: Date.now().toString(),
@@ -59,6 +98,20 @@ const NavigationStep = ({
 
   const removeNavItem = (id: string) => {
     setNavItems(navItems.filter((item) => item.id !== id));
+  };
+
+  const applyPreset = (preset: typeof presetColors[0]) => {
+    setNavBarStyle({
+      backgroundColor: preset.bg,
+      activeIconColor: preset.activeIcon,
+      inactiveIconColor: preset.inactiveIcon,
+      activeTextColor: preset.activeText,
+      inactiveTextColor: preset.inactiveText,
+    });
+  };
+
+  const updateStyle = (field: keyof NavBarStyle, value: string) => {
+    setNavBarStyle({ ...navBarStyle, [field]: value });
   };
 
   return (
@@ -133,6 +186,122 @@ const NavigationStep = ({
               </div>
             </div>
 
+            {/* Color Customization */}
+            <div className="space-y-4 p-4 rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-2 mb-3">
+                <Palette className="w-5 h-5 text-primary" />
+                <Label className="text-sm font-medium">Customize Colors</Label>
+              </div>
+
+              {/* Preset Themes */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Quick Presets</Label>
+                <div className="flex flex-wrap gap-2">
+                  {presetColors.map((preset) => (
+                    <button
+                      key={preset.name}
+                      onClick={() => applyPreset(preset)}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-border hover:border-primary/50 transition-colors flex items-center gap-2"
+                    >
+                      <div
+                        className="w-4 h-4 rounded-full border border-border"
+                        style={{ backgroundColor: preset.bg }}
+                      />
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Colors */}
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Background Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={navBarStyle.backgroundColor}
+                      onChange={(e) => updateStyle("backgroundColor", e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                    />
+                    <Input
+                      value={navBarStyle.backgroundColor}
+                      onChange={(e) => updateStyle("backgroundColor", e.target.value)}
+                      className="flex-1 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs">Active Icon Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={navBarStyle.activeIconColor}
+                      onChange={(e) => updateStyle("activeIconColor", e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                    />
+                    <Input
+                      value={navBarStyle.activeIconColor}
+                      onChange={(e) => updateStyle("activeIconColor", e.target.value)}
+                      className="flex-1 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs">Inactive Icon Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={navBarStyle.inactiveIconColor}
+                      onChange={(e) => updateStyle("inactiveIconColor", e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                    />
+                    <Input
+                      value={navBarStyle.inactiveIconColor}
+                      onChange={(e) => updateStyle("inactiveIconColor", e.target.value)}
+                      className="flex-1 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs">Active Text Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={navBarStyle.activeTextColor}
+                      onChange={(e) => updateStyle("activeTextColor", e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                    />
+                    <Input
+                      value={navBarStyle.activeTextColor}
+                      onChange={(e) => updateStyle("activeTextColor", e.target.value)}
+                      className="flex-1 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 col-span-2">
+                  <Label className="text-xs">Inactive Text Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={navBarStyle.inactiveTextColor}
+                      onChange={(e) => updateStyle("inactiveTextColor", e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                    />
+                    <Input
+                      value={navBarStyle.inactiveTextColor}
+                      onChange={(e) => updateStyle("inactiveTextColor", e.target.value)}
+                      className="flex-1 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Navigation Items */}
             <div className="space-y-3">
               <Label className="text-sm font-medium">Menu Items</Label>
@@ -170,9 +339,17 @@ const NavigationStep = ({
                     </div>
                     
                     <div className="space-y-1">
-                      <Label className="text-xs">Icon</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Icon</Label>
+                        <button
+                          onClick={() => setShowAllIcons(showAllIcons === item.id ? null : item.id)}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          {showAllIcons === item.id ? "Show less" : "Show all icons"}
+                        </button>
+                      </div>
                       <div className="flex gap-2 flex-wrap">
-                        {iconOptions.map((opt) => (
+                        {(showAllIcons === item.id ? iconOptions : iconOptions.slice(0, 5)).map((opt) => (
                           <button
                             key={opt.value}
                             onClick={() => updateNavItem(item.id, "icon", opt.value)}
@@ -220,19 +397,32 @@ const NavigationStep = ({
                     {navigationType === "drawer" ? (
                       // Drawer Preview
                       <div className="flex">
-                        <div className="w-2/3 bg-card border-r border-border p-3">
+                        <div 
+                          className="w-2/3 p-3"
+                          style={{ backgroundColor: navBarStyle.backgroundColor }}
+                        >
                           <div className="space-y-2">
-                            {navItems.slice(0, 8).map((item) => {
+                            {navItems.slice(0, 8).map((item, idx) => {
                               const IconComponent = iconOptions.find(
                                 (opt) => opt.value === item.icon
                               )?.icon || Home;
+                              const isActive = idx === 0;
                               return (
                                 <div
                                   key={item.id}
-                                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
+                                  className="flex items-center gap-3 p-2 rounded-lg"
+                                  style={{
+                                    backgroundColor: isActive ? `${navBarStyle.activeIconColor}20` : 'transparent',
+                                  }}
                                 >
-                                  <IconComponent className="w-5 h-5 text-muted-foreground" />
-                                  <span className="text-sm">
+                                  <IconComponent 
+                                    className="w-5 h-5" 
+                                    style={{ color: isActive ? navBarStyle.activeIconColor : navBarStyle.inactiveIconColor }}
+                                  />
+                                  <span 
+                                    className="text-sm"
+                                    style={{ color: isActive ? navBarStyle.activeTextColor : navBarStyle.inactiveTextColor }}
+                                  >
                                     {item.label || "Menu Item"}
                                   </span>
                                 </div>
@@ -246,18 +436,31 @@ const NavigationStep = ({
                       // Tabs Preview
                       <>
                         <div className="h-32 bg-gradient-to-br from-primary/20 to-primary/5" />
-                        <div className="flex items-center justify-around p-3 border-t border-border">
-                          {navItems.slice(0, 5).map((item) => {
+                        <div 
+                          className="flex items-center justify-around p-3"
+                          style={{ 
+                            backgroundColor: navBarStyle.backgroundColor,
+                            borderTop: `1px solid ${navBarStyle.inactiveIconColor}30`
+                          }}
+                        >
+                          {navItems.slice(0, 5).map((item, idx) => {
                             const IconComponent = iconOptions.find(
                               (opt) => opt.value === item.icon
                             )?.icon || Home;
+                            const isActive = idx === 0;
                             return (
                               <div
                                 key={item.id}
                                 className="flex flex-col items-center gap-1"
                               >
-                                <IconComponent className="w-5 h-5 text-muted-foreground" />
-                                <span className="text-[10px] text-muted-foreground">
+                                <IconComponent 
+                                  className="w-5 h-5" 
+                                  style={{ color: isActive ? navBarStyle.activeIconColor : navBarStyle.inactiveIconColor }}
+                                />
+                                <span 
+                                  className="text-[10px]"
+                                  style={{ color: isActive ? navBarStyle.activeTextColor : navBarStyle.inactiveTextColor }}
+                                >
                                   {item.label || "Tab"}
                                 </span>
                               </div>
