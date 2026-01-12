@@ -7,7 +7,7 @@ import WebsiteUrlStep from "@/components/builder/WebsiteUrlStep";
 import AppDetailsStep from "@/components/builder/AppDetailsStep";
 import IconUploadStep from "@/components/builder/IconUploadStep";
 import SplashScreenStep, { SplashConfig } from "@/components/builder/SplashScreenStep";
-import NavigationStep from "@/components/builder/NavigationStep";
+import NavigationStep, { NavBarStyle } from "@/components/builder/NavigationStep";
 import KeystoreStep from "@/components/builder/KeystoreStep";
 import PlatformStep from "@/components/builder/PlatformStep";
 import BuildSuccessStep from "@/components/builder/BuildSuccessStep";
@@ -91,6 +91,13 @@ const Builder = () => {
   const [navItems, setNavItems] = useState<NavItem[]>([
     { id: "1", label: "Home", url: "/", icon: "home" },
   ]);
+  const [navBarStyle, setNavBarStyle] = useState<NavBarStyle>({
+    backgroundColor: "#1a1a1a",
+    activeIconColor: "#007AFF",
+    inactiveIconColor: "#8E8E93",
+    activeTextColor: "#007AFF",
+    inactiveTextColor: "#8E8E93",
+  });
 
   // Step 6: Keystore
   const [generateKeystore, setGenerateKeystore] = useState(false);
@@ -158,6 +165,7 @@ const Builder = () => {
           enableNavigation,
           navigationType,
           navItems,
+          navBarStyle,
           keystoreConfig: generateKeystore ? keystoreConfig : null,
           platforms: selectedPlatforms,
           userId: user.id,
@@ -202,6 +210,13 @@ const Builder = () => {
     setEnableNavigation(false);
     setNavigationType("tabs");
     setNavItems([{ id: "1", label: "Home", url: "/", icon: "home" }]);
+    setNavBarStyle({
+      backgroundColor: "#1a1a1a",
+      activeIconColor: "#007AFF",
+      inactiveIconColor: "#8E8E93",
+      activeTextColor: "#007AFF",
+      inactiveTextColor: "#8E8E93",
+    });
     setGenerateKeystore(false);
     setKeystoreConfig({
       alias: "",
@@ -257,6 +272,8 @@ const Builder = () => {
             setNavItems={setNavItems}
             navigationType={navigationType}
             setNavigationType={setNavigationType}
+            navBarStyle={navBarStyle}
+            setNavBarStyle={setNavBarStyle}
           />
         );
       case 6:

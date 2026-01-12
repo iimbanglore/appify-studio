@@ -19,6 +19,14 @@ interface SplashConfig {
   resizeMode: "contain" | "cover" | "native";
 }
 
+interface NavBarStyle {
+  backgroundColor: string;
+  activeIconColor: string;
+  inactiveIconColor: string;
+  activeTextColor: string;
+  inactiveTextColor: string;
+}
+
 interface BuildRequest {
   websiteUrl: string;
   appName: string;
@@ -29,6 +37,7 @@ interface BuildRequest {
   enableNavigation: boolean;
   navigationType?: "tabs" | "drawer";
   navItems?: Array<{ label: string; url: string; icon: string }>;
+  navBarStyle?: NavBarStyle;
   keystoreConfig?: {
     alias: string;
     password: string;
@@ -367,6 +376,15 @@ function generateAppCode(config: BuildRequest): string {
   const hasNav = config.enableNavigation && config.navItems && config.navItems.length > 0;
   const isDrawer = config.navigationType === "drawer";
   
+  // Get custom colors or use defaults
+  const navStyle = config.navBarStyle || {
+    backgroundColor: "#1a1a1a",
+    activeIconColor: "#007AFF",
+    inactiveIconColor: "#8E8E93",
+    activeTextColor: "#007AFF",
+    inactiveTextColor: "#8E8E93",
+  };
+  
   if (hasNav && isDrawer) {
     // Drawer Navigation with Pull To Refresh
     const navItemsJson = JSON.stringify(config.navItems);
@@ -399,7 +417,7 @@ function WebViewScreen({ url }) {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="${navStyle.activeIconColor}" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}
@@ -409,9 +427,9 @@ function WebViewScreen({ url }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#007AFF"
-            colors={['#007AFF']}
-            progressBackgroundColor="#1a1a1a"
+            tintColor="${navStyle.activeIconColor}"
+            colors={['${navStyle.activeIconColor}']}
+            progressBackgroundColor="${navStyle.backgroundColor}"
           />
         }
       >
@@ -453,11 +471,11 @@ function AppNavigator() {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: '#1a1a1a' },
-        headerTintColor: '#fff',
-        drawerStyle: { backgroundColor: '#1a1a1a', width: 280 },
-        drawerActiveTintColor: '#007AFF',
-        drawerInactiveTintColor: '#8E8E93',
+        headerStyle: { backgroundColor: '${navStyle.backgroundColor}' },
+        headerTintColor: '${navStyle.activeTextColor}',
+        drawerStyle: { backgroundColor: '${navStyle.backgroundColor}', width: 280 },
+        drawerActiveTintColor: '${navStyle.activeIconColor}',
+        drawerInactiveTintColor: '${navStyle.inactiveIconColor}',
         drawerLabelStyle: { marginLeft: -16, fontSize: 15 },
       }}
     >
@@ -515,7 +533,7 @@ const styles = StyleSheet.create({
   },
   drawerContent: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '${navStyle.backgroundColor}',
   },
   drawerHeader: {
     padding: 20,
@@ -524,7 +542,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   drawerTitle: {
-    color: '#fff',
+    color: '${navStyle.activeTextColor}',
     fontSize: 20,
     fontWeight: 'bold',
   },
@@ -561,7 +579,7 @@ function WebViewScreen({ url }) {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="${navStyle.activeIconColor}" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}
@@ -571,9 +589,9 @@ function WebViewScreen({ url }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#007AFF"
-            colors={['#007AFF']}
-            progressBackgroundColor="#1a1a1a"
+            tintColor="${navStyle.activeIconColor}"
+            colors={['${navStyle.activeIconColor}']}
+            progressBackgroundColor="${navStyle.backgroundColor}"
           />
         }
       >
@@ -607,9 +625,10 @@ function AppNavigator() {
           const item = navItems.find(n => n.label === route.name);
           return <Ionicons name={item?.icon || 'home'} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: '#8E8E93',
-        tabBarStyle: { backgroundColor: '#1a1a1a', borderTopColor: '#333' },
+        tabBarActiveTintColor: '${navStyle.activeIconColor}',
+        tabBarInactiveTintColor: '${navStyle.inactiveIconColor}',
+        tabBarStyle: { backgroundColor: '${navStyle.backgroundColor}', borderTopColor: '#333' },
+        tabBarLabelStyle: { fontSize: 11 },
       })}
     >
       {navItems.map((item, index) => (
