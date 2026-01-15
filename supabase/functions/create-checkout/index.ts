@@ -67,7 +67,7 @@ serve(async (req) => {
       apiVersion: "2023-10-16",
     });
 
-    // Create checkout session
+    // Create checkout session - note: we add session_id to success URL for direct verification
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -84,7 +84,10 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
-      success_url: successUrl || `${req.headers.get("origin")}/builder?payment=success&build_id=${buildId}`,
+      // Include session_id in URL using {CHECKOUT_SESSION_ID} placeholder
+      success_url: successUrl 
+        ? `${successUrl}&session_id={CHECKOUT_SESSION_ID}` 
+        : `${req.headers.get("origin")}/builder?payment=success&build_id=${buildId}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl || `${req.headers.get("origin")}/builder?payment=cancelled`,
       metadata: {
         build_id: buildId,
