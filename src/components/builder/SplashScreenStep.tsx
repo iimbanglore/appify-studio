@@ -19,13 +19,34 @@ const SplashScreenStep = ({ splashConfig, setSplashConfig }: SplashScreenStepPro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileSelect = (file: File) => {
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSplashConfig({ ...splashConfig, image: e.target?.result as string });
+  const convertToPng = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } else {
+          reject(new Error("Failed to get canvas context"));
+        }
       };
-      reader.readAsDataURL(file);
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleFileSelect = async (file: File) => {
+    if (file && file.type.startsWith("image/")) {
+      try {
+        const pngDataUrl = await convertToPng(file);
+        setSplashConfig({ ...splashConfig, image: pngDataUrl });
+      } catch (error) {
+        console.error("Error converting image:", error);
+      }
     }
   };
 
