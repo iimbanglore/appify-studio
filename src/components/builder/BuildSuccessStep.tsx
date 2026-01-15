@@ -42,17 +42,18 @@ const BuildSuccessStep = ({
 
   // Check payment status on mount and when URL changes
   useEffect(() => {
-    const checkPaymentStatus = async () => {
+    const checkPaymentStatus = async (sessionId?: string) => {
       if (!primaryBuildId) {
         setCheckingPayment(false);
         return;
       }
 
       try {
-        console.log("Checking payment status for build:", primaryBuildId);
+        console.log("Checking payment status for build:", primaryBuildId, "sessionId:", sessionId);
         
+        // Pass sessionId if available - this allows direct Stripe verification without webhooks
         const { data, error } = await supabase.functions.invoke("check-payment", {
-          body: { buildId: primaryBuildId },
+          body: { buildId: primaryBuildId, sessionId },
         });
 
         if (error) {
@@ -71,17 +72,23 @@ const BuildSuccessStep = ({
     // Check if returning from successful payment
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get("payment");
+    const sessionId = urlParams.get("session_id");
     
-    if (paymentStatus === "success") {
-      toast.success("Payment successful! You can now download your app.");
+    if (paymentStatus === "success" && sessionId) {
+      // Verify payment directly with Stripe using the session ID
+      toast.info("Verifying payment...");
+      checkPaymentStatus(sessionId).then(() => {
+        toast.success("Payment successful! You can now download your app.");
+      });
       // Clean up URL
       window.history.replaceState({}, "", window.location.pathname);
     } else if (paymentStatus === "cancelled") {
       toast.error("Payment was cancelled");
       window.history.replaceState({}, "", window.location.pathname);
+      checkPaymentStatus();
+    } else {
+      checkPaymentStatus();
     }
-
-    checkPaymentStatus();
   }, [primaryBuildId]);
 
   // Subscribe to real-time build updates
