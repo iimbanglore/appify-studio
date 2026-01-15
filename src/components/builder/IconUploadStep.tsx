@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Image, Upload, X } from "lucide-react";
+import { Image as ImageIcon, Upload, X } from "lucide-react";
 
 interface IconUploadStepProps {
   appIcon: string | null;
@@ -12,13 +12,34 @@ const IconUploadStep = ({ appIcon, setAppIcon }: IconUploadStepProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileSelect = (file: File) => {
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setAppIcon(e.target?.result as string);
+  const convertToPng = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } else {
+          reject(new Error("Failed to get canvas context"));
+        }
       };
-      reader.readAsDataURL(file);
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleFileSelect = async (file: File) => {
+    if (file && file.type.startsWith("image/")) {
+      try {
+        const pngDataUrl = await convertToPng(file);
+        setAppIcon(pngDataUrl);
+      } catch (error) {
+        console.error("Error converting image:", error);
+      }
     }
   };
 
@@ -42,7 +63,7 @@ const IconUploadStep = ({ appIcon, setAppIcon }: IconUploadStepProps) => {
     <div className="space-y-6 animate-fade-in">
       <div className="text-center mb-8">
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-          <Image className="w-8 h-8 text-primary" />
+          <ImageIcon className="w-8 h-8 text-primary" />
         </div>
         <h2 className="text-2xl font-bold mb-2">Upload App Icon</h2>
         <p className="text-muted-foreground">
