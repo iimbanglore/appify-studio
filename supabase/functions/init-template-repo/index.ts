@@ -268,8 +268,9 @@ web-build/
 .env`;
     results['.gitignore'] = await createGitHubFile('.gitignore', gitignore, 'Add .gitignore');
 
-    // 6. codemagic.yaml - Using expo prebuild with SDK 49 (no auth required)
-    // Includes post-publish webhook for real-time build status updates
+    // 6. codemagic.yaml - Using expo prebuild with SDK 49
+    // Includes APK, AAB for Android and unsigned IPA for iOS
+    // Uses Xcode 16.2 for iOS builds
     const webhookUrl = 'https://viudzmarsxxblbdaxfzu.supabase.co/functions/v1/codemagic-webhook';
     
     const codemagicYaml = `workflows:
@@ -302,10 +303,23 @@ web-build/
         script: |
           cd android
           ./gradlew assembleRelease --no-daemon
+      - name: Build Android App Bundle (AAB)
+        script: |
+          cd android
+          ./gradlew bundleRelease --no-daemon
+      - name: Copy build outputs
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/outputs
+          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          ls -la $CM_BUILD_DIR/build/outputs/
       - name: Mark build success
         script: touch ~/SUCCESS
     artifacts:
       - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+      - build/outputs/*.apk
+      - build/outputs/*.aab
     publishing:
       email:
         recipients:
@@ -317,10 +331,11 @@ web-build/
         - name: Report build status
           script: |
             if [ -f ~/SUCCESS ]; then
-              ARTIFACT_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".apk")) | .url' | head -1)
+              APK_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".apk")) | .url' | head -1)
+              AAB_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".aab")) | .url' | head -1)
               curl -X POST "${webhookUrl}" \\
                 -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.apk", "url": "'"$ARTIFACT_URL"'", "type": "apk"}]}'
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.apk", "url": "'"$APK_URL"'", "type": "apk"}, {"name": "app.aab", "url": "'"$AAB_URL"'", "type": "aab"}]}'
             else
               curl -X POST "${webhookUrl}" \\
                 -H "Content-Type: application/json" \\
@@ -334,11 +349,10 @@ web-build/
     environment:
       groups:
         - app_credentials
-        - ios_credentials
       vars:
         BUNDLE_ID: com.app.webview
       node: 18.17.0
-      xcode: 15.0
+      xcode: 16.2
       cocoapods: default
     scripts:
       - name: Install dependencies
@@ -352,14 +366,24 @@ web-build/
           curl -X POST "${webhookUrl}" \\
             -H "Content-Type: application/json" \\
             -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "building"}'
-      - name: Build iOS
+      - name: Build iOS Archive
         script: |
           cd ios
-          xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          SCHEME_NAME=$(xcodebuild -list -json | jq -r '.project.schemes[0]')
+          xcodebuild -workspace *.xcworkspace -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+      - name: Create unsigned IPA
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/ipa
+          cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications
+          mkdir -p Payload
+          cp -r *.app Payload/
+          zip -r $CM_BUILD_DIR/build/ipa/App.ipa Payload
+          ls -la $CM_BUILD_DIR/build/ipa/
       - name: Mark build success
         script: touch ~/SUCCESS
     artifacts:
-      - ios/build/**/*.xcarchive
+      - build/ipa/*.ipa
+      - build/*.xcarchive
     publishing:
       email:
         recipients:
@@ -371,16 +395,16 @@ web-build/
         - name: Report build status
           script: |
             if [ -f ~/SUCCESS ]; then
-              ARTIFACT_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".xcarchive")) | .url' | head -1)
+              IPA_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".ipa")) | .url' | head -1)
               curl -X POST "${webhookUrl}" \\
                 -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.xcarchive", "url": "'"$ARTIFACT_URL"'", "type": "xcarchive"}]}'
+                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.ipa", "url": "'"$IPA_URL"'", "type": "ipa"}]}'
             else
               curl -X POST "${webhookUrl}" \\
                 -H "Content-Type: application/json" \\
                 -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "failed", "error": "Build failed"}'
             fi`;
-    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Add codemagic.yaml with webhook');
+    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Update codemagic.yaml with Xcode 16.2, AAB and IPA support');
 
     // 7. README.md
     const readme = `# WebView App Template
