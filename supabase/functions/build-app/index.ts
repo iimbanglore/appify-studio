@@ -285,7 +285,7 @@ workflows:
       vars:
         BUNDLE_ID: ${config.packageId}
       node: 18.17.0
-      xcode: 15.4
+      xcode: 16.2
       cocoapods: default
     triggering:
       events:
@@ -303,15 +303,35 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios && pod install
-      - name: Set up code signing
+      - name: Create exportOptions.plist
         script: |
-          xcode-project use-profiles
+          cat > ios/exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
       - name: Build iOS Archive
         script: |
-          cd ios && xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
-      - name: Export IPA
+          cd ios
+          SCHEME_NAME=\$(xcodebuild -list -json | jq -r '.project.schemes[0]')
+          xcodebuild -workspace *.xcworkspace -scheme "\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+      - name: Create unsigned IPA
         script: |
-          xcodebuild -exportArchive -archivePath \$CM_BUILD_DIR/build/App.xcarchive -exportOptionsPlist ios/exportOptions.plist -exportPath \$CM_BUILD_DIR/build/ipa || echo "IPA export skipped - requires signing"
+          mkdir -p \$CM_BUILD_DIR/build/ipa
+          cd \$CM_BUILD_DIR/build/App.xcarchive/Products/Applications
+          mkdir -p Payload
+          cp -r *.app Payload/
+          zip -r \$CM_BUILD_DIR/build/ipa/${config.appName.replace(/\s+/g, '')}.ipa Payload
+          ls -la \$CM_BUILD_DIR/build/ipa/
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
@@ -908,6 +928,7 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       ],
     };
   } else {
+    const appNameClean = config.appName.replace(/\s+/g, '');
     return {
       name: `${config.appName} iOS Build`,
       instance_type: 'mac_mini_m2',
@@ -917,28 +938,32 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
           BUNDLE_ID: config.packageId,
         },
         node: '18.17.0',
-        xcode: '15.4',
+        xcode: '16.2',
         cocoapods: 'default',
       },
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
         { name: 'Generate iOS project', script: 'npx expo prebuild --platform ios --clean --no-install' },
         { name: 'Install CocoaPods', script: 'cd ios && pod install' },
-        { name: 'Set up code signing', script: 'xcode-project use-profiles' },
-        { name: 'Build iOS Archive', script: 'cd ios && xcodebuild -workspace *.xcworkspace -scheme webviewapptemplate -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive' },
-        { name: 'Export IPA', script: 'xcodebuild -exportArchive -archivePath $CM_BUILD_DIR/build/App.xcarchive -exportOptionsPlist $CM_BUILD_DIR/ios/exportOptions.plist -exportPath $CM_BUILD_DIR/build/ipa' },
+        { name: 'Create exportOptions.plist', script: `cat > ios/exportOptions.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>ad-hoc</string>
+  <key>compileBitcode</key>
+  <false/>
+</dict>
+</plist>
+EOF` },
+        { name: 'Build iOS Archive', script: 'cd ios && SCHEME_NAME=$(xcodebuild -list -json | jq -r \'.project.schemes[0]\') && xcodebuild -workspace *.xcworkspace -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO' },
+        { name: 'Create unsigned IPA', script: `mkdir -p $CM_BUILD_DIR/build/ipa && cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications && mkdir -p Payload && cp -r *.app Payload/ && zip -r $CM_BUILD_DIR/build/ipa/${appNameClean}.ipa Payload` },
       ],
       artifacts: [
         'build/ipa/*.ipa',
         'build/*.xcarchive'
       ],
-      publishing: {
-        app_store_connect: {
-          api_key: '$APP_STORE_CONNECT_PRIVATE_KEY',
-          key_id: '$APP_STORE_CONNECT_KEY_IDENTIFIER',
-          issuer_id: '$APP_STORE_CONNECT_ISSUER_ID',
-        }
-      }
     };
   }
 }
