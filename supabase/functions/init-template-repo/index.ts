@@ -359,8 +359,14 @@ web-build/
         script: npm install
       - name: Generate iOS project
         script: npx expo prebuild --platform ios --clean --no-install
+      - name: Setup Ruby and CocoaPods
+        script: |
+          gem install cocoapods
+          pod repo update
       - name: Install CocoaPods
-        script: cd ios && pod install
+        script: |
+          cd ios
+          pod install --repo-update --verbose
       - name: Mark build started
         script: |
           curl -X POST "${webhookUrl}" \\

@@ -944,7 +944,8 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
         { name: 'Generate iOS project', script: 'npx expo prebuild --platform ios --clean --no-install' },
-        { name: 'Install CocoaPods', script: 'cd ios && pod install' },
+        { name: 'Setup Ruby and CocoaPods', script: 'gem install cocoapods && pod repo update' },
+        { name: 'Install CocoaPods', script: 'cd ios && pod install --repo-update --verbose' },
         { name: 'Create exportOptions.plist', script: `cat > ios/exportOptions.plist << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
