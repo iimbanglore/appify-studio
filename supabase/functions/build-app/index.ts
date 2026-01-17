@@ -509,72 +509,258 @@ function generateAppCode(config: BuildRequest): string {
     activeTextColor: "#007AFF",
     inactiveTextColor: "#8E8E93",
   };
+
+  // Base domain for detecting external links
+  const baseDomain = new URL(config.websiteUrl).hostname;
   
   if (hasNav && isDrawer) {
-    // Drawer Navigation with Pull To Refresh
+    // Drawer Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
     const navItemsJson = JSON.stringify(config.navItems);
-    return `import React, { useState, useRef, useCallback } from 'react';
-import { StatusBar, StyleSheet, View, Text, RefreshControl, ScrollView, Platform, ActivityIndicator } from 'react-native';
+    return `import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 const Drawer = createDrawerNavigator();
-
 const navItems = ${navItemsJson};
+const BASE_DOMAIN = '${baseDomain}';
+const SYNC_INTERVAL = 30000; // Real-time sync every 30 seconds
+const PULL_THRESHOLD = 150; // Rigid pull-to-refresh threshold (pixels)
 
-function WebViewScreen({ url }) {
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const webViewRef = useRef(null);
+function InAppBrowser({ visible, url, onClose }) {
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [browserLoading, setBrowserLoading] = useState(true);
+  const [currentUrl, setCurrentUrl] = useState(url);
+  const browserRef = useRef(null);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    if (webViewRef.current) {
-      webViewRef.current.reload();
-    }
-    setTimeout(() => setRefreshing(false), 1500);
-  }, []);
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (visible && canGoBack && browserRef.current) {
+        browserRef.current.goBack();
+        return true;
+      }
+      if (visible) {
+        onClose();
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [visible, canGoBack, onClose]);
+
+  if (!visible) return null;
 
   return (
-    <View style={styles.container}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.browserContainer}>
+        <View style={styles.browserHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.browserUrlContainer}>
+            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => canGoBack && browserRef.current?.goBack()} 
+            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
+          >
+            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
+            <Ionicons name="refresh" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {browserLoading && (
+          <View style={styles.browserLoading}>
+            <ActivityIndicator size="small" color="${navStyle.activeIconColor}" />
+          </View>
+        )}
+        <WebView
+          ref={browserRef}
+          source={{ uri: url }}
+          style={styles.browserWebview}
+          onNavigationStateChange={(navState) => {
+            setCanGoBack(navState.canGoBack);
+            setCurrentUrl(navState.url);
+          }}
+          onLoadStart={() => setBrowserLoading(true)}
+          onLoadEnd={() => setBrowserLoading(false)}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          cacheEnabled={true}
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        />
+      </View>
+    </Modal>
+  );
+}
+
+function WebViewScreen({ url }) {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState('');
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const webViewRef = useRef(null);
+  const lastSyncRef = useRef(Date.now());
+
+  // Real-time sync effect
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+        webViewRef.current.injectJavaScript(\`
+          if (typeof window.__realTimeSync === 'function') {
+            window.__realTimeSync();
+          } else {
+            // Soft reload for real-time content sync
+            if (document.hidden === false) {
+              fetch(window.location.href, { cache: 'reload' })
+                .then(r => r.text())
+                .then(html => {
+                  const parser = new DOMParser();
+                  const newDoc = parser.parseFromString(html, 'text/html');
+                  const newBody = newDoc.body.innerHTML;
+                  if (document.body.innerHTML !== newBody) {
+                    document.body.innerHTML = newBody;
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+          true;
+        \`);
+        lastSyncRef.current = Date.now();
+      }
+    }, SYNC_INTERVAL);
+    return () => clearInterval(syncInterval);
+  }, [loading]);
+
+  const handleRefresh = useCallback(() => {
+    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullDistance(0);
+      }, 1500);
+    }
+  }, [scrollY, pullDistance]);
+
+  // Rigid pull-to-refresh with PanResponder
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (scrollY <= 0 && gestureState.dy > 0) {
+          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
+        }
+      },
+      onPanResponderRelease: () => {
+        if (pullDistance >= PULL_THRESHOLD) {
+          handleRefresh();
+        } else {
+          setPullDistance(0);
+        }
+      },
+    })
+  ).current;
+
+  const handleNavigationRequest = (request) => {
+    const requestUrl = request.url;
+    try {
+      const urlObj = new URL(requestUrl);
+      const isExternal = !urlObj.hostname.includes(BASE_DOMAIN) && 
+                         !requestUrl.startsWith('about:') && 
+                         !requestUrl.startsWith('javascript:');
+      if (isExternal) {
+        setBrowserUrl(requestUrl);
+        setShowBrowser(true);
+        return false;
+      }
+    } catch (e) {}
+    return true;
+  };
+
+  const injectedJS = \`
+    (function() {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      window.addEventListener('scroll', function() {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      }, { passive: true });
+    })();
+    true;
+  \`;
+
+  const handleMessage = (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'scroll') {
+        setScrollY(data.y);
+      }
+    } catch (e) {}
+  };
+
+  return (
+    <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {/* Pull to refresh indicator */}
+      {pullDistance > 0 && (
+        <View style={[styles.pullIndicator, { height: pullDistance }]}>
+          <ActivityIndicator 
+            size="small" 
+            color="${navStyle.activeIconColor}" 
+            style={{ opacity: pullDistance / PULL_THRESHOLD }}
+          />
+          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
+            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
+          </Text>
+        </View>
+      )}
+
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="${navStyle.activeIconColor}" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="${navStyle.activeIconColor}"
-            colors={['${navStyle.activeIconColor}']}
-            progressBackgroundColor="${navStyle.backgroundColor}"
-          />
-        }
-      >
-        <WebView
-          ref={webViewRef}
-          source={{ uri: url }}
-          style={styles.webview}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={false}
-          scalesPageToFit={true}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo={true}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
-          pullToRefreshEnabled={true}
-          nestedScrollEnabled={true}
-        />
-      </ScrollView>
+
+      <WebView
+        ref={webViewRef}
+        source={{ uri: url }}
+        style={[styles.webview, { marginTop: pullDistance }]}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        startInLoadingState={false}
+        scalesPageToFit={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onShouldStartLoadWithRequest={handleNavigationRequest}
+        onMessage={handleMessage}
+        injectedJavaScript={injectedJS}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        thirdPartyCookiesEnabled={true}
+        sharedCookiesEnabled={true}
+        allowsBackForwardNavigationGestures={true}
+        pullToRefreshEnabled={false}
+      />
+
+      <InAppBrowser 
+        visible={showBrowser} 
+        url={browserUrl} 
+        onClose={() => setShowBrowser(false)} 
+      />
     </View>
   );
 }
@@ -628,17 +814,15 @@ export default function App() {
   );
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
   },
-  scrollContainer: {
-    flex: 1,
-  },
   webview: {
     flex: 1,
-    height: '100%',
   },
   loadingOverlay: {
     position: 'absolute',
@@ -656,6 +840,21 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
+  pullIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '${navStyle.backgroundColor}',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  pullText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 5,
+  },
   drawerContent: {
     flex: 1,
     backgroundColor: '${navStyle.backgroundColor}',
@@ -671,72 +870,292 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
+  browserContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  browserHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '${navStyle.backgroundColor}',
+    paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight + 10,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+  },
+  browserButton: {
+    padding: 8,
+  },
+  browserButtonDisabled: {
+    opacity: 0.5,
+  },
+  browserUrlContainer: {
+    flex: 1,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 8,
+  },
+  browserUrl: {
+    color: '#aaa',
+    fontSize: 13,
+  },
+  browserLoading: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  browserWebview: {
+    flex: 1,
+  },
 });`;
   } else if (hasNav) {
-    // Bottom Tab Navigation with Pull To Refresh
+    // Bottom Tab Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
     const navItemsJson = JSON.stringify(config.navItems);
-    return `import React, { useState, useRef, useCallback } from 'react';
-import { StatusBar, StyleSheet, SafeAreaView, RefreshControl, ScrollView, View, Text, ActivityIndicator, Platform } from 'react-native';
+    return `import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 const Tab = createBottomTabNavigator();
-
 const navItems = ${navItemsJson};
+const BASE_DOMAIN = '${baseDomain}';
+const SYNC_INTERVAL = 30000;
+const PULL_THRESHOLD = 150;
 
-function WebViewScreen({ url }) {
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const webViewRef = useRef(null);
+function InAppBrowser({ visible, url, onClose }) {
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [browserLoading, setBrowserLoading] = useState(true);
+  const [currentUrl, setCurrentUrl] = useState(url);
+  const browserRef = useRef(null);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    if (webViewRef.current) {
-      webViewRef.current.reload();
-    }
-    setTimeout(() => setRefreshing(false), 1500);
-  }, []);
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (visible && canGoBack && browserRef.current) {
+        browserRef.current.goBack();
+        return true;
+      }
+      if (visible) {
+        onClose();
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [visible, canGoBack, onClose]);
+
+  if (!visible) return null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.browserContainer}>
+        <View style={styles.browserHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.browserUrlContainer}>
+            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => canGoBack && browserRef.current?.goBack()} 
+            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
+          >
+            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
+            <Ionicons name="refresh" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {browserLoading && (
+          <View style={styles.browserLoading}>
+            <ActivityIndicator size="small" color="${navStyle.activeIconColor}" />
+          </View>
+        )}
+        <WebView
+          ref={browserRef}
+          source={{ uri: url }}
+          style={styles.browserWebview}
+          onNavigationStateChange={(navState) => {
+            setCanGoBack(navState.canGoBack);
+            setCurrentUrl(navState.url);
+          }}
+          onLoadStart={() => setBrowserLoading(true)}
+          onLoadEnd={() => setBrowserLoading(false)}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          cacheEnabled={true}
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        />
+      </View>
+    </Modal>
+  );
+}
+
+function WebViewScreen({ url }) {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState('');
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const webViewRef = useRef(null);
+  const lastSyncRef = useRef(Date.now());
+
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+        webViewRef.current.injectJavaScript(\`
+          if (typeof window.__realTimeSync === 'function') {
+            window.__realTimeSync();
+          } else {
+            if (document.hidden === false) {
+              fetch(window.location.href, { cache: 'reload' })
+                .then(r => r.text())
+                .then(html => {
+                  const parser = new DOMParser();
+                  const newDoc = parser.parseFromString(html, 'text/html');
+                  const newBody = newDoc.body.innerHTML;
+                  if (document.body.innerHTML !== newBody) {
+                    document.body.innerHTML = newBody;
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+          true;
+        \`);
+        lastSyncRef.current = Date.now();
+      }
+    }, SYNC_INTERVAL);
+    return () => clearInterval(syncInterval);
+  }, [loading]);
+
+  const handleRefresh = useCallback(() => {
+    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullDistance(0);
+      }, 1500);
+    }
+  }, [scrollY, pullDistance]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (scrollY <= 0 && gestureState.dy > 0) {
+          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
+        }
+      },
+      onPanResponderRelease: () => {
+        if (pullDistance >= PULL_THRESHOLD) {
+          handleRefresh();
+        } else {
+          setPullDistance(0);
+        }
+      },
+    })
+  ).current;
+
+  const handleNavigationRequest = (request) => {
+    const requestUrl = request.url;
+    try {
+      const urlObj = new URL(requestUrl);
+      const isExternal = !urlObj.hostname.includes(BASE_DOMAIN) && 
+                         !requestUrl.startsWith('about:') && 
+                         !requestUrl.startsWith('javascript:');
+      if (isExternal) {
+        setBrowserUrl(requestUrl);
+        setShowBrowser(true);
+        return false;
+      }
+    } catch (e) {}
+    return true;
+  };
+
+  const injectedJS = \`
+    (function() {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      window.addEventListener('scroll', function() {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      }, { passive: true });
+    })();
+    true;
+  \`;
+
+  const handleMessage = (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'scroll') {
+        setScrollY(data.y);
+      }
+    } catch (e) {}
+  };
+
+  return (
+    <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {pullDistance > 0 && (
+        <View style={[styles.pullIndicator, { height: pullDistance }]}>
+          <ActivityIndicator 
+            size="small" 
+            color="${navStyle.activeIconColor}" 
+            style={{ opacity: pullDistance / PULL_THRESHOLD }}
+          />
+          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
+            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
+          </Text>
+        </View>
+      )}
+
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="${navStyle.activeIconColor}" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="${navStyle.activeIconColor}"
-            colors={['${navStyle.activeIconColor}']}
-            progressBackgroundColor="${navStyle.backgroundColor}"
-          />
-        }
-      >
-        <WebView
-          ref={webViewRef}
-          source={{ uri: url }}
-          style={styles.webview}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={false}
-          scalesPageToFit={true}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo={true}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
-          pullToRefreshEnabled={true}
-          nestedScrollEnabled={true}
-        />
-      </ScrollView>
+
+      <WebView
+        ref={webViewRef}
+        source={{ uri: url }}
+        style={[styles.webview, { marginTop: pullDistance }]}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        startInLoadingState={false}
+        scalesPageToFit={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onShouldStartLoadWithRequest={handleNavigationRequest}
+        onMessage={handleMessage}
+        injectedJavaScript={injectedJS}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        thirdPartyCookiesEnabled={true}
+        sharedCookiesEnabled={true}
+        allowsBackForwardNavigationGestures={true}
+        pullToRefreshEnabled={false}
+      />
+
+      <InAppBrowser 
+        visible={showBrowser} 
+        url={browserUrl} 
+        onClose={() => setShowBrowser(false)} 
+      />
     </SafeAreaView>
   );
 }
@@ -775,17 +1194,15 @@ export default function App() {
   );
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
   },
-  scrollContainer: {
-    flex: 1,
-  },
   webview: {
     flex: 1,
-    height: '100%',
   },
   loadingOverlay: {
     position: 'absolute',
@@ -803,79 +1220,315 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
+  pullIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '${navStyle.backgroundColor}',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  pullText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  browserContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  browserHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '${navStyle.backgroundColor}',
+    paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight + 10,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+  },
+  browserButton: {
+    padding: 8,
+  },
+  browserButtonDisabled: {
+    opacity: 0.5,
+  },
+  browserUrlContainer: {
+    flex: 1,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 8,
+  },
+  browserUrl: {
+    color: '#aaa',
+    fontSize: 13,
+  },
+  browserLoading: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  browserWebview: {
+    flex: 1,
+  },
 });`;
   } else {
-    // Without navigation - simple WebView with Pull To Refresh
-    return `import React, { useState, useRef, useCallback } from 'react';
-import { StatusBar, StyleSheet, View, RefreshControl, ScrollView, Text, ActivityIndicator, Platform } from 'react-native';
+    // Without navigation - Simple WebView with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
+    return `import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function App() {
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const webViewRef = useRef(null);
+const BASE_DOMAIN = '${baseDomain}';
+const SYNC_INTERVAL = 30000;
+const PULL_THRESHOLD = 150;
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    if (webViewRef.current) {
-      webViewRef.current.reload();
-    }
-    setTimeout(() => setRefreshing(false), 1500);
-  }, []);
+function InAppBrowser({ visible, url, onClose }) {
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [browserLoading, setBrowserLoading] = useState(true);
+  const [currentUrl, setCurrentUrl] = useState(url);
+  const browserRef = useRef(null);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (visible && canGoBack && browserRef.current) {
+        browserRef.current.goBack();
+        return true;
+      }
+      if (visible) {
+        onClose();
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [visible, canGoBack, onClose]);
+
+  if (!visible) return null;
 
   return (
-    <View style={styles.container}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.browserContainer}>
+        <View style={styles.browserHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.browserUrlContainer}>
+            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => canGoBack && browserRef.current?.goBack()} 
+            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
+          >
+            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
+            <Ionicons name="refresh" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {browserLoading && (
+          <View style={styles.browserLoading}>
+            <ActivityIndicator size="small" color="#007AFF" />
+          </View>
+        )}
+        <WebView
+          ref={browserRef}
+          source={{ uri: url }}
+          style={styles.browserWebview}
+          onNavigationStateChange={(navState) => {
+            setCanGoBack(navState.canGoBack);
+            setCurrentUrl(navState.url);
+          }}
+          onLoadStart={() => setBrowserLoading(true)}
+          onLoadEnd={() => setBrowserLoading(false)}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          cacheEnabled={true}
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        />
+      </View>
+    </Modal>
+  );
+}
+
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState('');
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const webViewRef = useRef(null);
+  const lastSyncRef = useRef(Date.now());
+
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+        webViewRef.current.injectJavaScript(\`
+          if (typeof window.__realTimeSync === 'function') {
+            window.__realTimeSync();
+          } else {
+            if (document.hidden === false) {
+              fetch(window.location.href, { cache: 'reload' })
+                .then(r => r.text())
+                .then(html => {
+                  const parser = new DOMParser();
+                  const newDoc = parser.parseFromString(html, 'text/html');
+                  const newBody = newDoc.body.innerHTML;
+                  if (document.body.innerHTML !== newBody) {
+                    document.body.innerHTML = newBody;
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+          true;
+        \`);
+        lastSyncRef.current = Date.now();
+      }
+    }, SYNC_INTERVAL);
+    return () => clearInterval(syncInterval);
+  }, [loading]);
+
+  const handleRefresh = useCallback(() => {
+    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullDistance(0);
+      }, 1500);
+    }
+  }, [scrollY, pullDistance]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (scrollY <= 0 && gestureState.dy > 0) {
+          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
+        }
+      },
+      onPanResponderRelease: () => {
+        if (pullDistance >= PULL_THRESHOLD) {
+          handleRefresh();
+        } else {
+          setPullDistance(0);
+        }
+      },
+    })
+  ).current;
+
+  const handleNavigationRequest = (request) => {
+    const requestUrl = request.url;
+    try {
+      const urlObj = new URL(requestUrl);
+      const isExternal = !urlObj.hostname.includes(BASE_DOMAIN) && 
+                         !requestUrl.startsWith('about:') && 
+                         !requestUrl.startsWith('javascript:');
+      if (isExternal) {
+        setBrowserUrl(requestUrl);
+        setShowBrowser(true);
+        return false;
+      }
+    } catch (e) {}
+    return true;
+  };
+
+  const injectedJS = \`
+    (function() {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      window.addEventListener('scroll', function() {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
+      }, { passive: true });
+    })();
+    true;
+  \`;
+
+  const handleMessage = (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'scroll') {
+        setScrollY(data.y);
+      }
+    } catch (e) {}
+  };
+
+  return (
+    <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {pullDistance > 0 && (
+        <View style={[styles.pullIndicator, { height: pullDistance }]}>
+          <ActivityIndicator 
+            size="small" 
+            color="#007AFF" 
+            style={{ opacity: pullDistance / PULL_THRESHOLD }}
+          />
+          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
+            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
+          </Text>
+        </View>
+      )}
+
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#007AFF"
-            colors={['#007AFF']}
-            progressBackgroundColor="#1a1a1a"
-          />
-        }
-      >
-        <WebView
-          ref={webViewRef}
-          source={{ uri: '${config.websiteUrl}' }}
-          style={styles.webview}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={false}
-          scalesPageToFit={true}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo={true}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
-          pullToRefreshEnabled={true}
-          nestedScrollEnabled={true}
-        />
-      </ScrollView>
+
+      <WebView
+        ref={webViewRef}
+        source={{ uri: '${config.websiteUrl}' }}
+        style={[styles.webview, { marginTop: pullDistance }]}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        startInLoadingState={false}
+        scalesPageToFit={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onShouldStartLoadWithRequest={handleNavigationRequest}
+        onMessage={handleMessage}
+        injectedJavaScript={injectedJS}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        thirdPartyCookiesEnabled={true}
+        sharedCookiesEnabled={true}
+        allowsBackForwardNavigationGestures={true}
+        pullToRefreshEnabled={false}
+      />
+
+      <InAppBrowser 
+        visible={showBrowser} 
+        url={browserUrl} 
+        onClose={() => setShowBrowser(false)} 
+      />
     </View>
   );
 }
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
   },
-  scrollContainer: {
-    flex: 1,
-  },
   webview: {
     flex: 1,
-    height: '100%',
     marginTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   loadingOverlay: {
@@ -893,6 +1546,62 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 10,
     fontSize: 14,
+  },
+  pullIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  pullText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  browserContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  browserHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight + 10,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+  },
+  browserButton: {
+    padding: 8,
+  },
+  browserButtonDisabled: {
+    opacity: 0.5,
+  },
+  browserUrlContainer: {
+    flex: 1,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 8,
+  },
+  browserUrl: {
+    color: '#aaa',
+    fontSize: 13,
+  },
+  browserLoading: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  browserWebview: {
+    flex: 1,
   },
 });`;
   }
