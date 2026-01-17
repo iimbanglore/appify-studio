@@ -140,6 +140,50 @@ serve(async (req) => {
 
     console.log(`Successfully processed webhook for build ${payload.buildId}`);
 
+    // Send email notification for completed or failed builds
+    if (payload.status === 'finished' || payload.status === 'failed') {
+      try {
+        // Get build details including user_id and app_name
+        const { data: buildData } = await supabase
+          .from('builds')
+          .select('user_id, app_name')
+          .eq('build_id', payload.buildId)
+          .single();
+
+        if (buildData) {
+          const notificationPayload = {
+            buildId: payload.buildId,
+            status: payload.status === 'finished' ? 'completed' : 'failed',
+            appName: buildData.app_name || 'Your App',
+            platform: payload.workflowId?.includes('android') ? 'android' : 'ios',
+            downloadUrl: downloadUrl,
+            aabDownloadUrl: aabDownloadUrl,
+            errorMessage: payload.error || null,
+            userId: buildData.user_id,
+          };
+
+          console.log('Sending build notification email:', notificationPayload);
+
+          // Call the send-build-notification edge function
+          const notificationUrl = `${supabaseUrl}/functions/v1/send-build-notification`;
+          const notificationResponse = await fetch(notificationUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify(notificationPayload),
+          });
+
+          const notificationResult = await notificationResponse.json();
+          console.log('Build notification result:', notificationResult);
+        }
+      } catch (notificationError) {
+        console.error('Error sending build notification:', notificationError);
+        // Don't throw - we don't want to fail the webhook if email fails
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
