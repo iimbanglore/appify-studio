@@ -514,7 +514,7 @@ function generateAppCode(config: BuildRequest): string {
   const baseDomain = new URL(config.websiteUrl).hostname;
   
   if (hasNav && isDrawer) {
-    // Drawer Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
+    // Drawer Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
@@ -522,12 +522,97 @@ import { WebView } from 'react-native-webview';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Drawer = createDrawerNavigator();
 const navItems = ${navItemsJson};
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000; // Real-time sync every 30 seconds
 const PULL_THRESHOLD = 150; // Rigid pull-to-refresh threshold (pixels)
+const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+
+// Offline fallback page HTML
+const OFFLINE_HTML = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 80px;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(90deg, #fff, #a8d8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      font-size: 16px;
+      color: #b0b8c8;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .retry-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      padding: 16px 48px;
+      border-radius: 50px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .retry-btn:active {
+      transform: scale(0.95);
+    }
+    .status {
+      margin-top: 32px;
+      padding: 12px 24px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      font-size: 14px;
+      color: #8892a6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>It looks like you've lost your internet connection. Please check your network settings and try again.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Try Again</button>
+    <div class="status">Waiting for connection...</div>
+  </div>
+</body>
+</html>
+\`;
 
 function InAppBrowser({ visible, url, onClose }) {
   const [canGoBack, setCanGoBack] = useState(false);
@@ -604,13 +689,48 @@ function WebViewScreen({ url }) {
   const [showBrowser, setShowBrowser] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
   const lastSyncRef = useRef(Date.now());
+
+  // Network connectivity monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const offline = !state.isConnected || !state.isInternetReachable;
+      setIsOffline(offline);
+      if (!offline && webViewRef.current) {
+        // Auto-reload when coming back online
+        webViewRef.current.reload();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Load cached HTML on mount
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY + '_' + url).then(html => {
+      if (html) setCachedHtml(html);
+    });
+  }, [url]);
+
+  // Cache HTML content for offline use
+  const cachePageContent = useCallback(() => {
+    if (webViewRef.current && !isOffline) {
+      webViewRef.current.injectJavaScript(\`
+        window.ReactNativeWebView.postMessage(JSON.stringify({ 
+          type: 'cache', 
+          html: document.documentElement.outerHTML 
+        }));
+        true;
+      \`);
+    }
+  }, [isOffline]);
 
   // Real-time sync effect
   useEffect(() => {
     const syncInterval = setInterval(() => {
-      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+      if (webViewRef.current && !loading && !isOffline && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
         webViewRef.current.injectJavaScript(\`
           if (typeof window.__realTimeSync === 'function') {
             window.__realTimeSync();
@@ -633,10 +753,11 @@ function WebViewScreen({ url }) {
           true;
         \`);
         lastSyncRef.current = Date.now();
+        cachePageContent();
       }
     }, SYNC_INTERVAL);
     return () => clearInterval(syncInterval);
-  }, [loading]);
+  }, [loading, isOffline, cachePageContent]);
 
   const handleRefresh = useCallback(() => {
     if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
@@ -703,8 +824,22 @@ function WebViewScreen({ url }) {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
         setScrollY(data.y);
+      } else if (data.type === 'cache' && data.html) {
+        AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
+        setCachedHtml(data.html);
       }
     } catch (e) {}
+  };
+
+  // Determine what to show: offline page, cached content, or live content
+  const getWebViewSource = () => {
+    if (isOffline) {
+      if (cachedHtml) {
+        return { html: cachedHtml, baseUrl: url };
+      }
+      return { html: OFFLINE_HTML };
+    }
+    return { uri: url };
   };
 
   return (
@@ -732,9 +867,17 @@ function WebViewScreen({ url }) {
         </View>
       )}
 
+      {/* Offline indicator */}
+      {isOffline && (
+        <View style={styles.offlineIndicator}>
+          <Ionicons name="cloud-offline" size={16} color="#fff" />
+          <Text style={styles.offlineText}>{cachedHtml ? 'Offline - Showing cached version' : 'No internet connection'}</Text>
+        </View>
+      )}
+
       <WebView
         ref={webViewRef}
-        source={{ uri: url }}
+        source={getWebViewSource()}
         style={[styles.webview, { marginTop: pullDistance }]}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -744,7 +887,10 @@ function WebViewScreen({ url }) {
         mediaPlaybackRequiresUserAction={false}
         allowsFullscreenVideo={true}
         onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          cachePageContent();
+        }}
         onShouldStartLoadWithRequest={handleNavigationRequest}
         onMessage={handleMessage}
         injectedJavaScript={injectedJS}
@@ -754,6 +900,8 @@ function WebViewScreen({ url }) {
         sharedCookiesEnabled={true}
         allowsBackForwardNavigationGestures={true}
         pullToRefreshEnabled={false}
+        onError={() => setIsOffline(true)}
+        onHttpError={() => setIsOffline(true)}
       />
 
       <InAppBrowser 
@@ -911,9 +1059,23 @@ const styles = StyleSheet.create({
   browserWebview: {
     flex: 1,
   },
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff6b6b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });`;
   } else if (hasNav) {
-    // Bottom Tab Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
+    // Bottom Tab Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
@@ -921,12 +1083,93 @@ import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Tab = createBottomTabNavigator();
 const navItems = ${navItemsJson};
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000;
 const PULL_THRESHOLD = 150;
+const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+
+// Offline fallback page HTML
+const OFFLINE_HTML = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 80px;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(90deg, #fff, #a8d8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      font-size: 16px;
+      color: #b0b8c8;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .retry-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      padding: 16px 48px;
+      border-radius: 50px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+    }
+    .status {
+      margin-top: 32px;
+      padding: 12px 24px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      font-size: 14px;
+      color: #8892a6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>It looks like you've lost your internet connection. Please check your network settings and try again.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Try Again</button>
+    <div class="status">Waiting for connection...</div>
+  </div>
+</body>
+</html>
+\`;
 
 function InAppBrowser({ visible, url, onClose }) {
   const [canGoBack, setCanGoBack] = useState(false);
@@ -1003,12 +1246,46 @@ function WebViewScreen({ url }) {
   const [showBrowser, setShowBrowser] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
   const lastSyncRef = useRef(Date.now());
 
+  // Network connectivity monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const offline = !state.isConnected || !state.isInternetReachable;
+      setIsOffline(offline);
+      if (!offline && webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Load cached HTML on mount
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY + '_' + url).then(html => {
+      if (html) setCachedHtml(html);
+    });
+  }, [url]);
+
+  // Cache HTML content for offline use
+  const cachePageContent = useCallback(() => {
+    if (webViewRef.current && !isOffline) {
+      webViewRef.current.injectJavaScript(\`
+        window.ReactNativeWebView.postMessage(JSON.stringify({ 
+          type: 'cache', 
+          html: document.documentElement.outerHTML 
+        }));
+        true;
+      \`);
+    }
+  }, [isOffline]);
+
   useEffect(() => {
     const syncInterval = setInterval(() => {
-      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+      if (webViewRef.current && !loading && !isOffline && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
         webViewRef.current.injectJavaScript(\`
           if (typeof window.__realTimeSync === 'function') {
             window.__realTimeSync();
@@ -1030,10 +1307,11 @@ function WebViewScreen({ url }) {
           true;
         \`);
         lastSyncRef.current = Date.now();
+        cachePageContent();
       }
     }, SYNC_INTERVAL);
     return () => clearInterval(syncInterval);
-  }, [loading]);
+  }, [loading, isOffline, cachePageContent]);
 
   const handleRefresh = useCallback(() => {
     if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
@@ -1099,8 +1377,21 @@ function WebViewScreen({ url }) {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
         setScrollY(data.y);
+      } else if (data.type === 'cache' && data.html) {
+        AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
+        setCachedHtml(data.html);
       }
     } catch (e) {}
+  };
+
+  const getWebViewSource = () => {
+    if (isOffline) {
+      if (cachedHtml) {
+        return { html: cachedHtml, baseUrl: url };
+      }
+      return { html: OFFLINE_HTML };
+    }
+    return { uri: url };
   };
 
   return (
@@ -1127,9 +1418,16 @@ function WebViewScreen({ url }) {
         </View>
       )}
 
+      {isOffline && (
+        <View style={styles.offlineIndicator}>
+          <Ionicons name="cloud-offline" size={16} color="#fff" />
+          <Text style={styles.offlineText}>{cachedHtml ? 'Offline - Showing cached version' : 'No internet connection'}</Text>
+        </View>
+      )}
+
       <WebView
         ref={webViewRef}
-        source={{ uri: url }}
+        source={getWebViewSource()}
         style={[styles.webview, { marginTop: pullDistance }]}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -1139,7 +1437,10 @@ function WebViewScreen({ url }) {
         mediaPlaybackRequiresUserAction={false}
         allowsFullscreenVideo={true}
         onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          cachePageContent();
+        }}
         onShouldStartLoadWithRequest={handleNavigationRequest}
         onMessage={handleMessage}
         injectedJavaScript={injectedJS}
@@ -1149,6 +1450,8 @@ function WebViewScreen({ url }) {
         sharedCookiesEnabled={true}
         allowsBackForwardNavigationGestures={true}
         pullToRefreshEnabled={false}
+        onError={() => setIsOffline(true)}
+        onHttpError={() => setIsOffline(true)}
       />
 
       <InAppBrowser 
@@ -1276,17 +1579,112 @@ const styles = StyleSheet.create({
   browserWebview: {
     flex: 1,
   },
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff6b6b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });`;
   } else {
-    // Without navigation - Simple WebView with In-App Browser, Rigid Pull To Refresh, Speed Optimization, and Real-time Sync
+    // Without navigation - Simple WebView with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000;
 const PULL_THRESHOLD = 150;
+const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+
+// Offline fallback page HTML
+const OFFLINE_HTML = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 80px;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(90deg, #fff, #a8d8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      font-size: 16px;
+      color: #b0b8c8;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .retry-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      padding: 16px 48px;
+      border-radius: 50px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+    }
+    .status {
+      margin-top: 32px;
+      padding: 12px 24px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      font-size: 14px;
+      color: #8892a6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>It looks like you've lost your internet connection. Please check your network settings and try again.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Try Again</button>
+    <div class="status">Waiting for connection...</div>
+  </div>
+</body>
+</html>
+\`;
 
 function InAppBrowser({ visible, url, onClose }) {
   const [canGoBack, setCanGoBack] = useState(false);
@@ -1363,12 +1761,47 @@ export default function App() {
   const [showBrowser, setShowBrowser] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
   const lastSyncRef = useRef(Date.now());
+  const websiteUrl = '${config.websiteUrl}';
+
+  // Network connectivity monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const offline = !state.isConnected || !state.isInternetReachable;
+      setIsOffline(offline);
+      if (!offline && webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Load cached HTML on mount
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY + '_main').then(html => {
+      if (html) setCachedHtml(html);
+    });
+  }, []);
+
+  // Cache HTML content for offline use
+  const cachePageContent = useCallback(() => {
+    if (webViewRef.current && !isOffline) {
+      webViewRef.current.injectJavaScript(\`
+        window.ReactNativeWebView.postMessage(JSON.stringify({ 
+          type: 'cache', 
+          html: document.documentElement.outerHTML 
+        }));
+        true;
+      \`);
+    }
+  }, [isOffline]);
 
   useEffect(() => {
     const syncInterval = setInterval(() => {
-      if (webViewRef.current && !loading && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
+      if (webViewRef.current && !loading && !isOffline && Date.now() - lastSyncRef.current >= SYNC_INTERVAL) {
         webViewRef.current.injectJavaScript(\`
           if (typeof window.__realTimeSync === 'function') {
             window.__realTimeSync();
@@ -1390,10 +1823,11 @@ export default function App() {
           true;
         \`);
         lastSyncRef.current = Date.now();
+        cachePageContent();
       }
     }, SYNC_INTERVAL);
     return () => clearInterval(syncInterval);
-  }, [loading]);
+  }, [loading, isOffline, cachePageContent]);
 
   const handleRefresh = useCallback(() => {
     if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
@@ -1459,8 +1893,21 @@ export default function App() {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
         setScrollY(data.y);
+      } else if (data.type === 'cache' && data.html) {
+        AsyncStorage.setItem(CACHE_KEY + '_main', data.html);
+        setCachedHtml(data.html);
       }
     } catch (e) {}
+  };
+
+  const getWebViewSource = () => {
+    if (isOffline) {
+      if (cachedHtml) {
+        return { html: cachedHtml, baseUrl: websiteUrl };
+      }
+      return { html: OFFLINE_HTML };
+    }
+    return { uri: websiteUrl };
   };
 
   return (
@@ -1487,9 +1934,16 @@ export default function App() {
         </View>
       )}
 
+      {isOffline && (
+        <View style={styles.offlineIndicator}>
+          <Ionicons name="cloud-offline" size={16} color="#fff" />
+          <Text style={styles.offlineText}>{cachedHtml ? 'Offline - Showing cached version' : 'No internet connection'}</Text>
+        </View>
+      )}
+
       <WebView
         ref={webViewRef}
-        source={{ uri: '${config.websiteUrl}' }}
+        source={getWebViewSource()}
         style={[styles.webview, { marginTop: pullDistance }]}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -1499,7 +1953,10 @@ export default function App() {
         mediaPlaybackRequiresUserAction={false}
         allowsFullscreenVideo={true}
         onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          cachePageContent();
+        }}
         onShouldStartLoadWithRequest={handleNavigationRequest}
         onMessage={handleMessage}
         injectedJavaScript={injectedJS}
@@ -1509,6 +1966,8 @@ export default function App() {
         sharedCookiesEnabled={true}
         allowsBackForwardNavigationGestures={true}
         pullToRefreshEnabled={false}
+        onError={() => setIsOffline(true)}
+        onHttpError={() => setIsOffline(true)}
       />
 
       <InAppBrowser 
