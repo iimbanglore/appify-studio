@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 import {
   Loader2,
   Plus,
@@ -16,12 +17,14 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 
 interface Build {
   id: string;
   build_id: string;
   app_name: string;
+  package_id: string | null;
   platform: string;
   status: string;
   download_url: string | null;
@@ -34,8 +37,10 @@ interface Build {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, signOut } = useAuth();
+  const { toast } = useToast();
   const [builds, setBuilds] = useState<Build[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retryingBuildId, setRetryingBuildId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -139,6 +144,54 @@ const Dashboard = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleRetryBuild = async (build: Build) => {
+    if (!build.package_id) {
+      toast({
+        title: "Cannot retry build",
+        description: "Missing package information. Please create a new build.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setRetryingBuildId(build.id);
+
+    try {
+      // Call the build-app edge function to retry
+      const response = await supabase.functions.invoke('build-app', {
+        body: {
+          websiteUrl: '', // Will use default from previous build
+          appName: build.app_name,
+          packageId: build.package_id,
+          platforms: [build.platform],
+          userId: user?.id,
+          enableNavigation: false,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      toast({
+        title: "Build restarted",
+        description: `${build.app_name} is being rebuilt for ${build.platform}.`,
+      });
+
+      // Refresh builds list
+      fetchBuilds();
+    } catch (error) {
+      console.error('Retry build error:', error);
+      toast({
+        title: "Retry failed",
+        description: "Could not restart the build. Please try again or create a new build.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetryingBuildId(null);
+    }
   };
 
   if (authLoading || loading) {
@@ -278,9 +331,24 @@ const Dashboard = () => {
                       )}
 
                       {['failed', 'error'].includes(build.status.toLowerCase()) && (
-                        <span className="text-sm text-destructive max-w-xs">
-                          {build.error_message || 'Build failed - please try again'}
-                        </span>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-sm text-destructive max-w-xs">
+                            {build.error_message || 'Build failed'}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRetryBuild(build)}
+                            disabled={retryingBuildId === build.id}
+                          >
+                            {retryingBuildId === build.id ? (
+                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-4 h-4 mr-1" />
+                            )}
+                            Retry Build
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
