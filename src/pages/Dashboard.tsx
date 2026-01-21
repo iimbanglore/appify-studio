@@ -87,16 +87,26 @@ const Dashboard = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
+    const normalizedStatus = status.toLowerCase();
+    switch (normalizedStatus) {
       case 'queued':
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <Clock className="w-3 h-3" />
+            Queued
+          </Badge>
+        );
       case 'building':
+      case 'in_progress':
         return (
           <Badge variant="secondary" className="gap-1">
             <RefreshCw className="w-3 h-3 animate-spin" />
-            {status}
+            Building
           </Badge>
         );
       case 'finished':
+      case 'completed':
+      case 'success':
         return (
           <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20">
             <CheckCircle2 className="w-3 h-3" />
@@ -104,6 +114,7 @@ const Dashboard = () => {
           </Badge>
         );
       case 'failed':
+      case 'error':
         return (
           <Badge variant="destructive" className="gap-1">
             <XCircle className="w-3 h-3" />
@@ -208,15 +219,15 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-wrap">
                       {getStatusBadge(build.status)}
 
-                      {build.status === 'finished' && (
-                        <div className="flex gap-2">
-                          {build.download_url && (
+                      {['finished', 'completed', 'success'].includes(build.status.toLowerCase()) && (
+                        <div className="flex gap-2 flex-wrap">
+                          {build.platform === 'android' && build.download_url && (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="hero"
                               onClick={() =>
                                 handleDownload(
                                   build.download_url!,
@@ -225,10 +236,10 @@ const Dashboard = () => {
                               }
                             >
                               <Download className="w-4 h-4 mr-1" />
-                              APK
+                              Download APK
                             </Button>
                           )}
-                          {build.aab_download_url && (
+                          {build.platform === 'android' && build.aab_download_url && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -240,13 +251,13 @@ const Dashboard = () => {
                               }
                             >
                               <Download className="w-4 h-4 mr-1" />
-                              AAB
+                              Download AAB
                             </Button>
                           )}
                           {build.platform === 'ios' && build.download_url && (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="hero"
                               onClick={() =>
                                 handleDownload(
                                   build.download_url!,
@@ -255,15 +266,20 @@ const Dashboard = () => {
                               }
                             >
                               <Download className="w-4 h-4 mr-1" />
-                              IPA
+                              Download IPA
                             </Button>
+                          )}
+                          {!build.download_url && !build.aab_download_url && (
+                            <span className="text-sm text-muted-foreground">
+                              Build completed - download links pending
+                            </span>
                           )}
                         </div>
                       )}
 
-                      {build.status === 'failed' && build.error_message && (
-                        <span className="text-sm text-destructive max-w-xs truncate">
-                          {build.error_message}
+                      {['failed', 'error'].includes(build.status.toLowerCase()) && (
+                        <span className="text-sm text-destructive max-w-xs">
+                          {build.error_message || 'Build failed - please try again'}
                         </span>
                       )}
                     </div>
