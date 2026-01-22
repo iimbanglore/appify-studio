@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Helper function to encode string to base64 (handles Unicode properly)
+function stringToBase64(str: string): string {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
+  }
+  return btoa(binary);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -210,14 +221,14 @@ async function updateAppConfig(config: BuildRequest): Promise<boolean> {
     }
   };
 
-  const base64Content = btoa(JSON.stringify(appJson, null, 2));
+  const base64Content = stringToBase64(JSON.stringify(appJson, null, 2));
   return await updateGitHubFile('app.json', base64Content, `Update app.json for ${config.appName}`);
 }
 
 // Update App.js with navigation configuration
 async function updateAppCode(config: BuildRequest): Promise<boolean> {
   const appCode = generateAppCode(config);
-  const base64Content = btoa(appCode);
+  const base64Content = stringToBase64(appCode);
   return await updateGitHubFile('App.js', base64Content, `Update App.js for ${config.appName}`);
 }
 
@@ -337,7 +348,7 @@ workflows:
       - build/*.xcarchive
 `;
 
-  const base64Content = btoa(codemagicYaml);
+  const base64Content = stringToBase64(codemagicYaml);
   return await updateGitHubFile('codemagic.yaml', base64Content, `Update codemagic.yaml for ${config.appName}`);
 }
 
@@ -2381,7 +2392,7 @@ EOF` },
 
 function generateSnackId(config: BuildRequest): string {
   // Generate a deterministic ID based on the config
-  const hash = btoa(JSON.stringify({
+  const hash = stringToBase64(JSON.stringify({
     url: config.websiteUrl,
     name: config.appName,
     nav: config.enableNavigation,
