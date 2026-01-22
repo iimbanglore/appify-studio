@@ -510,6 +510,11 @@ function generateAppCode(config: BuildRequest): string {
     inactiveTextColor: "#8E8E93",
   };
 
+  // Get splash config
+  const splashBgColor = config.splashConfig?.backgroundColor || "#ffffff";
+  const splashResizeMode = config.splashConfig?.resizeMode || "contain";
+  const hasSplashImage = !!config.splashConfig?.image;
+
   // Base domain for detecting external links
   const baseDomain = new URL(config.websiteUrl).hostname;
   
@@ -517,13 +522,17 @@ function generateAppCode(config: BuildRequest): string {
     // Drawer Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
+import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent auto-hiding of splash screen
+SplashScreen.preventAutoHideAsync();
 
 const Drawer = createDrawerNavigator();
 const navItems = ${navItemsJson};
@@ -531,6 +540,70 @@ const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000; // Real-time sync every 30 seconds
 const PULL_THRESHOLD = 150; // Rigid pull-to-refresh threshold (pixels)
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+const SPLASH_DURATION = 4000; // Show splash for 4 seconds
+const SPLASH_BG_COLOR = '${splashBgColor}';
+
+// Custom Splash Screen Component
+function CustomSplashScreen({ onFinish }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Fade out animation
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        SplashScreen.hideAsync();
+        onFinish();
+      });
+    }, SPLASH_DURATION);
+    
+    return () => clearTimeout(timer);
+  }, [fadeAnim, onFinish]);
+  
+  return (
+    <Animated.View style={[splashStyles.container, { opacity: fadeAnim }]}>
+      <StatusBar barStyle="${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? 'dark-content' : 'light-content'}" backgroundColor={SPLASH_BG_COLOR} />
+      ${hasSplashImage ? `<Image 
+        source={require('./assets/splash.png')} 
+        style={splashStyles.image}
+        resizeMode="${splashResizeMode}"
+      />` : `<View style={splashStyles.placeholder}>
+        <Text style={splashStyles.appName}>${config.appName}</Text>
+      </View>`}
+    </Animated.View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: SPLASH_BG_COLOR,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? '#000000' : '#ffffff'}',
+  },
+});
 
 // Offline fallback page HTML
 const OFFLINE_HTML = \`
@@ -955,10 +1028,19 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+  
   return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
+    <View style={{ flex: 1 }}>
+      <NavigationContainer>
+        <AppNavigator />
+      </NavigationContainer>
+      {showSplash && <CustomSplashScreen onFinish={handleSplashFinish} />}
+    </View>
   );
 }
 
@@ -1078,13 +1160,17 @@ const styles = StyleSheet.create({
     // Bottom Tab Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
+import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent auto-hiding of splash screen
+SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
 const navItems = ${navItemsJson};
@@ -1092,6 +1178,70 @@ const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000;
 const PULL_THRESHOLD = 150;
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+const SPLASH_DURATION = 4000; // Show splash for 4 seconds
+const SPLASH_BG_COLOR = '${splashBgColor}';
+
+// Custom Splash Screen Component
+function CustomSplashScreen({ onFinish }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Fade out animation
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        SplashScreen.hideAsync();
+        onFinish();
+      });
+    }, SPLASH_DURATION);
+    
+    return () => clearTimeout(timer);
+  }, [fadeAnim, onFinish]);
+  
+  return (
+    <Animated.View style={[splashStyles.container, { opacity: fadeAnim }]}>
+      <StatusBar barStyle="${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? 'dark-content' : 'light-content'}" backgroundColor={SPLASH_BG_COLOR} />
+      ${hasSplashImage ? `<Image 
+        source={require('./assets/splash.png')} 
+        style={splashStyles.image}
+        resizeMode="${splashResizeMode}"
+      />` : `<View style={splashStyles.placeholder}>
+        <Text style={splashStyles.appName}>${config.appName}</Text>
+      </View>`}
+    </Animated.View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: SPLASH_BG_COLOR,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? '#000000' : '#ffffff'}',
+  },
+});
 
 // Offline fallback page HTML
 const OFFLINE_HTML = \`
@@ -1490,10 +1640,19 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+  
   return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
+    <View style={{ flex: 1 }}>
+      <NavigationContainer>
+        <AppNavigator />
+      </NavigationContainer>
+      {showSplash && <CustomSplashScreen onFinish={handleSplashFinish} />}
+    </View>
   );
 }
 
@@ -1597,16 +1756,84 @@ const styles = StyleSheet.create({
   } else {
     // Without navigation - Simple WebView with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder } from 'react-native';
+import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent auto-hiding of splash screen
+SplashScreen.preventAutoHideAsync();
 
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000;
 const PULL_THRESHOLD = 150;
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
+const SPLASH_DURATION = 4000; // Show splash for 4 seconds
+const SPLASH_BG_COLOR = '${splashBgColor}';
+
+// Custom Splash Screen Component
+function CustomSplashScreen({ onFinish }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Fade out animation
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        SplashScreen.hideAsync();
+        onFinish();
+      });
+    }, SPLASH_DURATION);
+    
+    return () => clearTimeout(timer);
+  }, [fadeAnim, onFinish]);
+  
+  return (
+    <Animated.View style={[splashStyles.container, { opacity: fadeAnim }]}>
+      <StatusBar barStyle="${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? 'dark-content' : 'light-content'}" backgroundColor={SPLASH_BG_COLOR} />
+      ${hasSplashImage ? `<Image 
+        source={require('./assets/splash.png')} 
+        style={splashStyles.image}
+        resizeMode="${splashResizeMode}"
+      />` : `<View style={splashStyles.placeholder}>
+        <Text style={splashStyles.appName}>${config.appName}</Text>
+      </View>`}
+    </Animated.View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: SPLASH_BG_COLOR,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '${splashBgColor === '#ffffff' || splashBgColor.toLowerCase() === '#fff' ? '#000000' : '#ffffff'}',
+  },
+});
 
 // Offline fallback page HTML
 const OFFLINE_HTML = \`
@@ -1754,7 +1981,7 @@ function InAppBrowser({ visible, url, onClose }) {
   );
 }
 
-export default function App() {
+function MainContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
@@ -1975,6 +2202,21 @@ export default function App() {
         url={browserUrl} 
         onClose={() => setShowBrowser(false)} 
       />
+    </View>
+  );
+}
+
+export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+  
+  return (
+    <View style={{ flex: 1 }}>
+      <MainContent />
+      {showSplash && <CustomSplashScreen onFinish={handleSplashFinish} />}
     </View>
   );
 }
