@@ -315,36 +315,32 @@ workflows:
           npx expo prebuild --platform ios --clean --no-install
       - name: Patch Boost podspec URL (fix checksum mismatch)
         script: |
+          set -e
           BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
           if [ -f "$BOOST_PODSPEC" ]; then
             echo "Selecting a reachable Boost mirror..."
-            BOOST_URL=""
-
-            for url in \
-              "https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2" \
-              "https://boost.teeks99.com/bin/1.76.0/boost_1_76_0.tar.bz2" \
+            urls=(
+              "https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2"
+              "https://boost.teeks99.com/bin/1.76.0/boost_1_76_0.tar.bz2"
               "https://sourceforge.net/projects/boost/files/boost/1.76.0/boost_1_76_0.tar.bz2/download"
-            do
+            )
+            BOOST_URL=""
+            for url in "${urls[@]}"; do
               echo "Testing $url"
               if curl -L --fail --silent --show-error --max-time 30 --range 0-2047 -o /tmp/boost_head "$url"; then
                 sig=$(head -c 3 /tmp/boost_head | od -An -t x1 | tr -d ' \n')
                 if [ "$sig" = "425a68" ]; then
                   BOOST_URL="$url"
-                  echo "Selected Boost URL: $BOOST_URL"
                   break
-                else
-                  echo "Not a bzip2 response (sig=$sig)"
                 fi
               fi
             done
-
             if [ -z "$BOOST_URL" ]; then
-              echo "Could not find a reachable Boost mirror; failing early."
+              echo "Could not find a reachable Boost mirror"
               exit 1
             fi
-
-            echo "Patching Boost podspec URL in $BOOST_PODSPEC"
-            perl -pi -e "s#(:http\\s*=>\\s*)'[^']*'#\\1'$BOOST_URL'#g" "$BOOST_PODSPEC"
+            echo "Patching Boost podspec URL -> $BOOST_URL"
+            perl -pi -e "s#:http\\s*=>\\s*'[^']*'#:http => '$BOOST_URL'#g" "$BOOST_PODSPEC"
             grep -n "spec.source" "$BOOST_PODSPEC" || true
           else
             echo "Boost podspec not found (skipping patch)"
