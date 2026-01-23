@@ -362,6 +362,16 @@ web-build/
         script: npm install
       - name: Generate iOS project
         script: npx expo prebuild --platform ios --clean --no-install
+      - name: Patch Boost podspec URL (fix checksum mismatch)
+        script: |
+          BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
+          if [ -f "$BOOST_PODSPEC" ]; then
+            echo "Patching Boost download URL in $BOOST_PODSPEC"
+            perl -pi -e 's#https://boostorg\\.jfrog\\.io/artifactory/main/release/1\\.76\\.0/source/boost_1_76_0\\.tar\\.bz2#https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2#g' "$BOOST_PODSPEC"
+            grep -n "boost_1_76_0" "$BOOST_PODSPEC" || true
+          else
+            echo "Boost podspec not found (skipping patch)"
+          fi
       - name: Setup Ruby and CocoaPods
         script: |
           gem install cocoapods
@@ -369,7 +379,10 @@ web-build/
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install --repo-update --verbose
+          rm -rf Pods Podfile.lock
+          rm -rf ~/Library/Caches/CocoaPods ~/.cocoapods/repos || true
+          pod cache clean boost --all || true
+          pod install --repo-update --clean-install --verbose
       - name: Mark build started
         script: |
           curl -X POST "${webhookUrl}" \\
