@@ -150,6 +150,7 @@ serve(async (req) => {
       dependencies: {
         "expo": "~49.0.0",
         "expo-status-bar": "~1.6.0",
+        "expo-splash-screen": "~0.20.5",
         "react": "18.2.0",
         "react-native": "0.72.6",
         "react-native-webview": "13.6.2",
@@ -160,7 +161,9 @@ serve(async (req) => {
         "react-native-reanimated": "~3.3.0",
         "react-native-screens": "~3.22.0",
         "react-native-safe-area-context": "4.6.3",
-        "@expo/vector-icons": "^13.0.0"
+        "@expo/vector-icons": "^13.0.0",
+        "@react-native-community/netinfo": "~9.3.10",
+        "@react-native-async-storage/async-storage": "1.18.2"
       },
       devDependencies: {
         "@babel/core": "^7.20.0"
