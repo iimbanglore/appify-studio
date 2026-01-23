@@ -325,7 +325,7 @@ workflows:
               "https://sourceforge.net/projects/boost/files/boost/1.76.0/boost_1_76_0.tar.bz2/download"
             )
             BOOST_URL=""
-            for url in "${urls[@]}"; do
+            for url in "\${urls[@]}"; do
               echo "Testing $url"
               if curl -L --fail --silent --show-error --max-time 30 --range 0-2047 -o /tmp/boost_head "$url"; then
                 sig=$(head -c 3 /tmp/boost_head | od -An -t x1 | tr -d ' \n')
