@@ -257,6 +257,7 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
+          npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
@@ -308,12 +309,16 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
+          npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
       - name: Generate iOS project
         script: |
           npx expo prebuild --platform ios --clean --no-install
       - name: Install CocoaPods
         script: |
-          cd ios && pod install
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod repo update
+          pod install --repo-update
       - name: Create exportOptions.plist
         script: |
           cat > ios/exportOptions.plist << EOF
