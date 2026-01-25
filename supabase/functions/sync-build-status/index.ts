@@ -114,6 +114,15 @@ serve(async (req) => {
 
     console.log("Updating build in database:", JSON.stringify(updateData, null, 2));
 
+    // Fetch current build to check if status changed
+    const { data: currentBuild } = await supabase
+      .from("builds")
+      .select("*")
+      .eq("build_id", buildId)
+      .single();
+
+    const previousStatus = currentBuild?.status;
+
     const { error: updateError } = await supabase
       .from("builds")
       .update(updateData)
@@ -135,6 +144,44 @@ serve(async (req) => {
       console.error("Error fetching updated build:", fetchError);
     }
 
+    // Send email notification if build just completed or failed
+    const statusJustChanged = previousStatus !== mappedStatus;
+    const isFinalStatus = mappedStatus === "completed" || mappedStatus === "failed";
+    
+    if (statusJustChanged && isFinalStatus && updatedBuild) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const notificationPayload = {
+          buildId: buildId,
+          status: mappedStatus,
+          appName: updatedBuild.app_name || "Your App",
+          platform: updatedBuild.platform || "android",
+          downloadUrl: downloadUrl,
+          aabDownloadUrl: aabDownloadUrl,
+          errorMessage: build.error || null,
+          userId: updatedBuild.user_id,
+        };
+
+        console.log("Sending build notification email:", notificationPayload);
+
+        const notificationUrl = `${supabaseUrl}/functions/v1/send-build-notification`;
+        const notificationResponse = await fetch(notificationUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify(notificationPayload),
+        });
+
+        const notificationResult = await notificationResponse.json();
+        console.log("Build notification result:", notificationResult);
+      } catch (notificationError) {
+        console.error("Error sending build notification:", notificationError);
+        // Don't throw - continue with response
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -142,6 +189,7 @@ serve(async (req) => {
         downloadUrl,
         aabDownloadUrl,
         build: updatedBuild,
+        notificationSent: statusJustChanged && isFinalStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
