@@ -571,6 +571,36 @@ const PULL_THRESHOLD = 150; // Rigid pull-to-refresh threshold (pixels)
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
+const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
+
+// Icon mapping from Lucide to Ionicons
+const iconMap = {
+  'home': 'home',
+  'user': 'person',
+  'settings': 'settings',
+  'info': 'information-circle',
+  'menu': 'menu',
+  'cart': 'cart',
+  'search': 'search',
+  'notifications': 'notifications',
+  'heart': 'heart',
+  'mail': 'mail',
+  'calendar': 'calendar',
+  'camera': 'camera',
+  'music': 'musical-notes',
+  'video': 'videocam',
+  'map': 'map',
+  'phone': 'call',
+  'star': 'star',
+  'bookmark': 'bookmark',
+  'share': 'share-social',
+  'download': 'download',
+  'upload': 'cloud-upload',
+};
+
+const getIonIconName = (lucideIcon) => {
+  return iconMap[lucideIcon] || iconMap['home'] || 'home';
+};
 
 // Custom Splash Screen Component
 function CustomSplashScreen({ onFinish }) {
@@ -816,6 +846,16 @@ function WebViewScreen({ url }) {
     });
   }, [url]);
 
+  // Loading timeout - force hide loading overlay after timeout
+  useEffect(() => {
+    if (loading) {
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, LOADING_TIMEOUT);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading]);
+
   // Cache HTML content for offline use
   const cachePageContent = useCallback(() => {
     if (webViewRef.current && !isOffline) {
@@ -1046,7 +1086,7 @@ function AppNavigator() {
           name={item.label}
           options={{
             drawerIcon: ({ color, size }) => (
-              <Ionicons name={item.icon || 'menu'} size={size} color={color} />
+              <Ionicons name={getIonIconName(item.icon)} size={size} color={color} />
             ),
           }}
           children={() => <WebViewScreen url={"${config.websiteUrl}" + item.url} />}
@@ -1209,6 +1249,37 @@ const PULL_THRESHOLD = 150;
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
+const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
+
+// Icon mapping from Lucide to Ionicons
+const iconMap = {
+  'home': 'home',
+  'user': 'person',
+  'settings': 'settings',
+  'info': 'information-circle',
+  'menu': 'menu',
+  'cart': 'cart',
+  'search': 'search',
+  'notifications': 'notifications',
+  'heart': 'heart',
+  'mail': 'mail',
+  'calendar': 'calendar',
+  'camera': 'camera',
+  'music': 'musical-notes',
+  'video': 'videocam',
+  'map': 'map',
+  'phone': 'call',
+  'star': 'star',
+  'bookmark': 'bookmark',
+  'share': 'share-social',
+  'download': 'download',
+  'upload': 'cloud-upload',
+};
+
+const getIonIconName = (lucideIcon) => {
+  return iconMap[lucideIcon] || iconMap['home'] || 'home';
+};
+
 
 // Custom Splash Screen Component
 function CustomSplashScreen({ onFinish }) {
@@ -1449,6 +1520,16 @@ function WebViewScreen({ url }) {
     });
   }, [url]);
 
+  // Loading timeout - force hide loading overlay after timeout
+  useEffect(() => {
+    if (loading) {
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, LOADING_TIMEOUT);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading]);
+
   // Cache HTML content for offline use
   const cachePageContent = useCallback(() => {
     if (webViewRef.current && !isOffline) {
@@ -1649,7 +1730,7 @@ function AppNavigator() {
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           const item = navItems.find(n => n.label === route.name);
-          return <Ionicons name={item?.icon || 'home'} size={size} color={color} />;
+          return <Ionicons name={getIonIconName(item?.icon)} size={size} color={color} />;
         },
         tabBarActiveTintColor: '${navStyle.activeIconColor}',
         tabBarInactiveTintColor: '${navStyle.inactiveIconColor}',
@@ -1801,6 +1882,7 @@ const PULL_THRESHOLD = 150;
 const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
+const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
 
 // Custom Splash Screen Component
 function CustomSplashScreen({ onFinish }) {
@@ -2041,6 +2123,16 @@ function MainContent() {
       if (html) setCachedHtml(html);
     });
   }, []);
+
+  // Loading timeout - force hide loading overlay after timeout
+  useEffect(() => {
+    if (loading) {
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, LOADING_TIMEOUT);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading]);
 
   // Cache HTML content for offline use
   const cachePageContent = useCallback(() => {
