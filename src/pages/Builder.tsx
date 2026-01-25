@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import SupportWidget from "@/components/SupportWidget";
 import StepIndicator from "@/components/builder/StepIndicator";
 import WebsiteUrlStep from "@/components/builder/WebsiteUrlStep";
 import AppDetailsStep from "@/components/builder/AppDetailsStep";
@@ -366,6 +367,7 @@ const Builder = () => {
       </main>
 
       <Footer />
+      <SupportWidget />
     </div>
   );
 };

@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.check-payment]
 verify_jwt = false
+
+[functions.sync-build-status]
+verify_jwt = false
