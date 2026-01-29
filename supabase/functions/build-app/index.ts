@@ -258,6 +258,87 @@ workflows:
         script: |
           npm install
           npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
+          npm install sharp
+      - name: Process app icons for proper sizing
+        script: |
+          # Create a Node.js script to process icons with proper sizing and padding
+          cat > process-icons.js << 'ICONSCRIPT'
+          const sharp = require('sharp');
+          const fs = require('fs');
+          const path = require('path');
+          
+          async function processIcons() {
+            const assetsDir = './assets';
+            const iconPath = path.join(assetsDir, 'icon.png');
+            const adaptiveIconPath = path.join(assetsDir, 'adaptive-icon.png');
+            const faviconPath = path.join(assetsDir, 'favicon.png');
+            
+            if (!fs.existsSync(iconPath)) {
+              console.log('No icon.png found, skipping icon processing');
+              return;
+            }
+            
+            console.log('Processing app icons...');
+            
+            try {
+              // Read the original icon
+              const iconBuffer = fs.readFileSync(iconPath);
+              
+              // Process main icon - resize to 1024x1024 and ensure it's centered
+              const mainIcon = await sharp(iconBuffer)
+                .resize(1024, 1024, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 0 }
+                })
+                .png()
+                .toBuffer();
+              fs.writeFileSync(iconPath, mainIcon);
+              console.log('✓ Processed icon.png (1024x1024)');
+              
+              // Process adaptive icon for Android - add 20% padding for safe zone
+              // Android adaptive icons crop outer ~18% so we need padding
+              const paddedSize = Math.floor(1024 * 0.7); // Icon at 70% of canvas
+              const padding = Math.floor((1024 - paddedSize) / 2);
+              
+              const adaptiveIcon = await sharp(iconBuffer)
+                .resize(paddedSize, paddedSize, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 0 }
+                })
+                .extend({
+                  top: padding,
+                  bottom: padding,
+                  left: padding,
+                  right: padding,
+                  background: { r: 255, g: 255, b: 255, alpha: 0 }
+                })
+                .resize(1024, 1024) // Ensure final size is exactly 1024x1024
+                .png()
+                .toBuffer();
+              fs.writeFileSync(adaptiveIconPath, adaptiveIcon);
+              console.log('✓ Processed adaptive-icon.png (1024x1024 with safe zone padding)');
+              
+              // Process favicon
+              const favicon = await sharp(iconBuffer)
+                .resize(48, 48, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 0 }
+                })
+                .png()
+                .toBuffer();
+              fs.writeFileSync(faviconPath, favicon);
+              console.log('✓ Processed favicon.png (48x48)');
+              
+              console.log('All icons processed successfully!');
+            } catch (error) {
+              console.error('Error processing icons:', error.message);
+              // Don't fail the build, just log the error
+            }
+          }
+          
+          processIcons();
+          ICONSCRIPT
+          node process-icons.js
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
@@ -310,6 +391,63 @@ workflows:
         script: |
           npm install
           npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
+          npm install sharp
+      - name: Process app icons for proper sizing
+        script: |
+          # Create a Node.js script to process icons with proper sizing
+          cat > process-icons.js << 'ICONSCRIPT'
+          const sharp = require('sharp');
+          const fs = require('fs');
+          const path = require('path');
+          
+          async function processIcons() {
+            const assetsDir = './assets';
+            const iconPath = path.join(assetsDir, 'icon.png');
+            const faviconPath = path.join(assetsDir, 'favicon.png');
+            
+            if (!fs.existsSync(iconPath)) {
+              console.log('No icon.png found, skipping icon processing');
+              return;
+            }
+            
+            console.log('Processing app icons for iOS...');
+            
+            try {
+              // Read the original icon
+              const iconBuffer = fs.readFileSync(iconPath);
+              
+              // Process main icon - resize to 1024x1024 and ensure it's centered
+              const mainIcon = await sharp(iconBuffer)
+                .resize(1024, 1024, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 1 }
+                })
+                .png()
+                .toBuffer();
+              fs.writeFileSync(iconPath, mainIcon);
+              console.log('✓ Processed icon.png (1024x1024)');
+              
+              // Process favicon
+              const favicon = await sharp(iconBuffer)
+                .resize(48, 48, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 1 }
+                })
+                .png()
+                .toBuffer();
+              fs.writeFileSync(faviconPath, favicon);
+              console.log('✓ Processed favicon.png (48x48)');
+              
+              console.log('All icons processed successfully!');
+            } catch (error) {
+              console.error('Error processing icons:', error.message);
+              // Don't fail the build, just log the error
+            }
+          }
+          
+          processIcons();
+          ICONSCRIPT
+          node process-icons.js
       - name: Generate iOS project
         script: |
           npx expo prebuild --platform ios --clean --no-install
