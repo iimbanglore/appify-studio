@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.sync-build-status]
 verify_jwt = false
+
+[functions.send-build-notification]
+verify_jwt = false
