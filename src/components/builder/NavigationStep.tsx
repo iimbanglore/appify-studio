@@ -10,6 +10,7 @@ export interface NavItem {
   label: string;
   url: string;
   icon: string;
+  isExternal?: boolean;
 }
 
 export type NavigationType = "tabs" | "drawer";
@@ -84,15 +85,20 @@ const NavigationStep = ({
       label: "",
       url: "",
       icon: "home",
+      isExternal: false,
     };
     setNavItems([...navItems, newItem]);
   };
 
-  const updateNavItem = (id: string, field: keyof NavItem, value: string) => {
+  const updateNavItem = (id: string, field: keyof NavItem, value: string | boolean) => {
     setNavItems(
-      navItems.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
+      navItems.map((item) => {
+        if (item.id !== id) return item;
+        if (field === "isExternal") {
+          return { ...item, [field]: value === "true" || value === true };
+        }
+        return { ...item, [field]: value };
+      })
     );
   };
 
@@ -315,6 +321,25 @@ const NavigationStep = ({
                   </div>
                   
                   <div className="flex-1 grid gap-3">
+                    {/* External Link Toggle */}
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`external-${item.id}`} className="text-xs font-medium cursor-pointer">
+                          External Link
+                        </Label>
+                        <span className="text-[10px] text-muted-foreground">
+                          (Opens in in-app browser)
+                        </span>
+                      </div>
+                      <Switch
+                        id={`external-${item.id}`}
+                        checked={item.isExternal || false}
+                        onCheckedChange={(checked) =>
+                          updateNavItem(item.id, "isExternal", checked.toString())
+                        }
+                      />
+                    </div>
+                    
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Label</Label>
@@ -327,9 +352,9 @@ const NavigationStep = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">URL Path</Label>
+                        <Label className="text-xs">{item.isExternal ? "Full URL" : "URL Path"}</Label>
                         <Input
-                          placeholder="/home"
+                          placeholder={item.isExternal ? "https://example.com" : "/home"}
                           value={item.url}
                           onChange={(e) =>
                             updateNavItem(item.id, "url", e.target.value)

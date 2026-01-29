@@ -47,7 +47,7 @@ interface BuildRequest {
   splashConfig?: SplashConfig;
   enableNavigation: boolean;
   navigationType?: "tabs" | "drawer";
-  navItems?: Array<{ label: string; url: string; icon: string }>;
+  navItems?: Array<{ label: string; url: string; icon: string; isExternal?: boolean }>;
   navBarStyle?: NavBarStyle;
   keystoreConfig?: {
     alias: string;
@@ -1092,6 +1092,32 @@ function CustomDrawerContent(props) {
   );
 }
 
+// External Link Screen - opens external URL in in-app browser
+function ExternalLinkScreen({ url, label }) {
+  const [showBrowser, setShowBrowser] = useState(true);
+  
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View style={styles.externalPlaceholder}>
+        <Ionicons name="globe-outline" size={48} color="${navStyle.activeIconColor}" />
+        <Text style={styles.externalText}>{label}</Text>
+        <TouchableOpacity 
+          style={styles.openExternalButton}
+          onPress={() => setShowBrowser(true)}
+        >
+          <Text style={styles.openExternalButtonText}>Open Link</Text>
+        </TouchableOpacity>
+      </View>
+      <InAppBrowser 
+        visible={showBrowser} 
+        url={url} 
+        onClose={() => setShowBrowser(false)} 
+      />
+    </View>
+  );
+}
+
 function AppNavigator() {
   return (
     <Drawer.Navigator
@@ -1115,7 +1141,10 @@ function AppNavigator() {
               <Ionicons name={getIonIconName(item.icon)} size={size} color={color} />
             ),
           }}
-          children={() => <WebViewScreen url={"${config.websiteUrl}" + item.url} />}
+          children={() => item.isExternal 
+            ? <ExternalLinkScreen url={item.url} label={item.label} />
+            : <WebViewScreen url={"${config.websiteUrl}" + item.url} />
+          }
         />
       ))}
     </Drawer.Navigator>
@@ -1250,6 +1279,30 @@ const styles = StyleSheet.create({
   offlineText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  externalPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '${navStyle.backgroundColor}',
+    gap: 16,
+  },
+  externalText: {
+    color: '${navStyle.activeTextColor}',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  openExternalButton: {
+    backgroundColor: '${navStyle.activeIconColor}',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  openExternalButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });`;
@@ -1779,6 +1832,32 @@ function WebViewScreen({ url }) {
   );
 }
 
+// External Link Screen - opens external URL in in-app browser
+function ExternalLinkScreen({ url, label }) {
+  const [showBrowser, setShowBrowser] = useState(true);
+  
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View style={styles.externalPlaceholder}>
+        <Ionicons name="globe-outline" size={48} color="${navStyle.activeIconColor}" />
+        <Text style={styles.externalText}>{label}</Text>
+        <TouchableOpacity 
+          style={styles.openExternalButton}
+          onPress={() => setShowBrowser(true)}
+        >
+          <Text style={styles.openExternalButtonText}>Open Link</Text>
+        </TouchableOpacity>
+      </View>
+      <InAppBrowser 
+        visible={showBrowser} 
+        url={url} 
+        onClose={() => setShowBrowser(false)} 
+      />
+    </SafeAreaView>
+  );
+}
+
 function AppNavigator() {
   return (
     <Tab.Navigator
@@ -1798,7 +1877,10 @@ function AppNavigator() {
         <Tab.Screen 
           key={index}
           name={item.label} 
-          children={() => <WebViewScreen url={"${config.websiteUrl}" + item.url} />}
+          children={() => item.isExternal 
+            ? <ExternalLinkScreen url={item.url} label={item.label} />
+            : <WebViewScreen url={"${config.websiteUrl}" + item.url} />
+          }
         />
       ))}
     </Tab.Navigator>
@@ -1918,6 +2000,30 @@ const styles = StyleSheet.create({
   offlineText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  externalPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '${navStyle.backgroundColor}',
+    gap: 16,
+  },
+  externalText: {
+    color: '${navStyle.activeTextColor}',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  openExternalButton: {
+    backgroundColor: '${navStyle.activeIconColor}',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  openExternalButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });`;
