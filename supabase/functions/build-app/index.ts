@@ -953,10 +953,51 @@ function WebViewScreen({ url }) {
 
   const injectedJS = \`
     (function() {
+      // Scroll tracking
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       window.addEventListener('scroll', function() {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       }, { passive: true });
+      
+      // Intercept all link clicks for in-app browser
+      document.addEventListener('click', function(e) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') {
+          target = target.parentElement;
+        }
+        if (target && target.tagName === 'A') {
+          var href = target.getAttribute('href');
+          if (href && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+            try {
+              var fullUrl = new URL(href, window.location.origin).href;
+              var baseDomain = '${baseDomain}';
+              var linkHostname = new URL(fullUrl).hostname;
+              if (!linkHostname.includes(baseDomain)) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              }
+            } catch (err) {}
+          }
+        }
+      }, true);
+      
+      // Also intercept window.open calls
+      var originalOpen = window.open;
+      window.open = function(url, target, features) {
+        if (url) {
+          try {
+            var fullUrl = new URL(url, window.location.origin).href;
+            var baseDomain = '${baseDomain}';
+            var linkHostname = new URL(fullUrl).hostname;
+            if (!linkHostname.includes(baseDomain)) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              return null;
+            }
+          } catch (err) {}
+        }
+        return originalOpen.call(window, url, target, features);
+      };
     })();
     true;
   \`;
@@ -969,6 +1010,9 @@ function WebViewScreen({ url }) {
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
+      } else if (data.type === 'external_link' && data.url) {
+        setBrowserUrl(data.url);
+        setShowBrowser(true);
       }
     } catch (e) {}
   };
@@ -1624,10 +1668,51 @@ function WebViewScreen({ url }) {
 
   const injectedJS = \`
     (function() {
+      // Scroll tracking
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       window.addEventListener('scroll', function() {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       }, { passive: true });
+      
+      // Intercept all link clicks for in-app browser
+      document.addEventListener('click', function(e) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') {
+          target = target.parentElement;
+        }
+        if (target && target.tagName === 'A') {
+          var href = target.getAttribute('href');
+          if (href && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+            try {
+              var fullUrl = new URL(href, window.location.origin).href;
+              var baseDomain = '${baseDomain}';
+              var linkHostname = new URL(fullUrl).hostname;
+              if (!linkHostname.includes(baseDomain)) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              }
+            } catch (err) {}
+          }
+        }
+      }, true);
+      
+      // Also intercept window.open calls
+      var originalOpen = window.open;
+      window.open = function(url, target, features) {
+        if (url) {
+          try {
+            var fullUrl = new URL(url, window.location.origin).href;
+            var baseDomain = '${baseDomain}';
+            var linkHostname = new URL(fullUrl).hostname;
+            if (!linkHostname.includes(baseDomain)) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              return null;
+            }
+          } catch (err) {}
+        }
+        return originalOpen.call(window, url, target, features);
+      };
     })();
     true;
   \`;
@@ -1640,6 +1725,9 @@ function WebViewScreen({ url }) {
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
+      } else if (data.type === 'external_link' && data.url) {
+        setBrowserUrl(data.url);
+        setShowBrowser(true);
       }
     } catch (e) {}
   };
@@ -2228,10 +2316,51 @@ function MainContent() {
 
   const injectedJS = \`
     (function() {
+      // Scroll tracking
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       window.addEventListener('scroll', function() {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: window.scrollY }));
       }, { passive: true });
+      
+      // Intercept all link clicks for in-app browser
+      document.addEventListener('click', function(e) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') {
+          target = target.parentElement;
+        }
+        if (target && target.tagName === 'A') {
+          var href = target.getAttribute('href');
+          if (href && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+            try {
+              var fullUrl = new URL(href, window.location.origin).href;
+              var baseDomain = '${baseDomain}';
+              var linkHostname = new URL(fullUrl).hostname;
+              if (!linkHostname.includes(baseDomain)) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              }
+            } catch (err) {}
+        }
+        }
+      }, true);
+      
+      // Also intercept window.open calls
+      var originalOpen = window.open;
+      window.open = function(url, target, features) {
+        if (url) {
+          try {
+            var fullUrl = new URL(url, window.location.origin).href;
+            var baseDomain = '${baseDomain}';
+            var linkHostname = new URL(fullUrl).hostname;
+            if (!linkHostname.includes(baseDomain)) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'external_link', url: fullUrl }));
+              return null;
+            }
+          } catch (err) {}
+        }
+        return originalOpen.call(window, url, target, features);
+      };
     })();
     true;
   \`;
@@ -2244,6 +2373,9 @@ function MainContent() {
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_main', data.html);
         setCachedHtml(data.html);
+      } else if (data.type === 'external_link' && data.url) {
+        setBrowserUrl(data.url);
+        setShowBrowser(true);
       }
     } catch (e) {}
   };
