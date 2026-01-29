@@ -257,6 +257,7 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
+          npm install react-native-inappbrowser-reborn
           npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
           npm install sharp
       - name: Process app icons for proper sizing
@@ -390,6 +391,7 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
+          npm install react-native-inappbrowser-reborn
           npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
           npm install sharp
       - name: Process app icons for proper sizing
@@ -689,7 +691,7 @@ function generateAppCode(config: BuildRequest): string {
     // Drawer Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
+import { StatusBar, StyleSheet, View, Text, Platform, ActivityIndicator, TouchableOpacity, BackHandler, Dimensions, Image, Animated, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
@@ -697,12 +699,13 @@ import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
+import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync();
 
 const Drawer = createDrawerNavigator();
-const navItems = ${navItemsJson};
+const navItems = \${navItemsJson};
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000; // Real-time sync every 30 seconds
 const PULL_THRESHOLD = 150; // Rigid pull-to-refresh threshold (pixels)
@@ -710,6 +713,47 @@ const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
 const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
+
+// Chromium In-App Browser Configuration
+const BROWSER_CONFIG = {
+  // Android Chrome Custom Tabs settings - uses Chromium engine
+  showTitle: true,
+  toolbarColor: '${navStyle.backgroundColor}',
+  secondaryToolbarColor: '${navStyle.backgroundColor}',
+  navigationBarColor: '${navStyle.backgroundColor}',
+  navigationBarDividerColor: '#333333',
+  enableUrlBarHiding: true,
+  enableDefaultShare: true,
+  forceCloseOnRedirection: false,
+  showInRecents: true,
+  hasBackButton: true,
+  // iOS Safari View Controller settings
+  dismissButtonStyle: 'close',
+  preferredBarTintColor: '${navStyle.backgroundColor}',
+  preferredControlTintColor: '${navStyle.activeIconColor}',
+  readerMode: false,
+  animated: true,
+  modalPresentationStyle: 'automatic',
+  modalTransitionStyle: 'coverVertical',
+  modalEnabled: true,
+  enableBarCollapsing: true,
+};
+
+// Helper function to open URL in Chromium-based in-app browser
+async function openInAppBrowser(url) {
+  try {
+    if (await InAppBrowser.isAvailable()) {
+      const result = await InAppBrowser.open(url, BROWSER_CONFIG);
+      console.log('Browser closed with result:', result.type);
+    } else {
+      // Fallback to system browser if in-app browser not available
+      Linking.openURL(url);
+    }
+  } catch (error) {
+    console.error('Error opening in-app browser:', error);
+    Linking.openURL(url);
+  }
+}
 
 // Icon mapping from Lucide to Ionicons
 const iconMap = {
@@ -884,79 +928,27 @@ const OFFLINE_HTML = \`
 </html>
 \`;
 
-function InAppBrowser({ visible, url, onClose }) {
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [browserLoading, setBrowserLoading] = useState(true);
-  const [currentUrl, setCurrentUrl] = useState(url);
-  const browserRef = useRef(null);
-
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (visible && canGoBack && browserRef.current) {
-        browserRef.current.goBack();
-        return true;
-      }
-      if (visible) {
-        onClose();
-        return true;
-      }
-      return false;
-    });
-    return () => backHandler.remove();
-  }, [visible, canGoBack, onClose]);
-
+// Legacy InAppBrowser component - kept for fallback, but primary is Chromium browser
+function InAppBrowserFallback({ visible, url, onClose }) {
+  // This is a fallback component - the main functionality now uses react-native-inappbrowser-reborn
+  // which provides Chrome Custom Tabs on Android and SFSafariViewController on iOS
   if (!visible) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.browserContainer}>
-        <View style={styles.browserHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.browserUrlContainer}>
-            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => canGoBack && browserRef.current?.goBack()} 
-            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
-          >
-            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
-            <Ionicons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        {browserLoading && (
-          <View style={styles.browserLoading}>
-            <ActivityIndicator size="small" color="${navStyle.activeIconColor}" />
-          </View>
-        )}
-        <WebView
-          ref={browserRef}
-          source={{ uri: url }}
-          style={styles.browserWebview}
-          onNavigationStateChange={(navState) => {
-            setCanGoBack(navState.canGoBack);
-            setCurrentUrl(navState.url);
-          }}
-          onLoadStart={() => setBrowserLoading(true)}
-          onLoadEnd={() => setBrowserLoading(false)}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          cacheEnabled={true}
-          cacheMode="LOAD_CACHE_ELSE_NETWORK"
-        />
-      </View>
-    </Modal>
-  );
+  
+  // Use Chromium-based browser immediately
+  useEffect(() => {
+    if (visible && url) {
+      openInAppBrowser(url).then(() => {
+        onClose();
+      });
+    }
+  }, [visible, url, onClose]);
+  
+  return null;
 }
 
 function WebViewScreen({ url }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [browserUrl, setBrowserUrl] = useState('');
-  const [showBrowser, setShowBrowser] = useState(false);
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
@@ -1062,8 +1054,8 @@ function WebViewScreen({ url }) {
                          !requestUrl.startsWith('about:') && 
                          !requestUrl.startsWith('javascript:');
       if (isExternal) {
-        setBrowserUrl(requestUrl);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(requestUrl);
         return false;
       }
     } catch (e) {}
@@ -1130,8 +1122,8 @@ function WebViewScreen({ url }) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
       } else if (data.type === 'external_link' && data.url) {
-        setBrowserUrl(data.url);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(data.url);
       }
     } catch (e) {}
   };
@@ -1209,12 +1201,6 @@ function WebViewScreen({ url }) {
           )}
         </TouchableOpacity>
       )}
-
-      <InAppBrowser 
-        visible={showBrowser} 
-        url={browserUrl} 
-        onClose={() => setShowBrowser(false)} 
-      />
     </View>
   );
 }
@@ -1230,9 +1216,17 @@ function CustomDrawerContent(props) {
   );
 }
 
-// External Link Screen - opens external URL in in-app browser
+// External Link Screen - opens external URL in Chromium-based in-app browser
 function ExternalLinkScreen({ url, label }) {
-  const [showBrowser, setShowBrowser] = useState(true);
+  // Open in Chromium browser when component mounts or when button is pressed
+  const handleOpenBrowser = useCallback(() => {
+    openInAppBrowser(url);
+  }, [url]);
+  
+  // Auto-open on mount
+  useEffect(() => {
+    handleOpenBrowser();
+  }, [handleOpenBrowser]);
   
   return (
     <View style={styles.container}>
@@ -1242,16 +1236,11 @@ function ExternalLinkScreen({ url, label }) {
         <Text style={styles.externalText}>{label}</Text>
         <TouchableOpacity 
           style={styles.openExternalButton}
-          onPress={() => setShowBrowser(true)}
+          onPress={handleOpenBrowser}
         >
           <Text style={styles.openExternalButtonText}>Open Link</Text>
         </TouchableOpacity>
       </View>
-      <InAppBrowser 
-        visible={showBrowser} 
-        url={url} 
-        onClose={() => setShowBrowser(false)} 
-      />
     </View>
   );
 }
@@ -1448,7 +1437,7 @@ const styles = StyleSheet.create({
     // Bottom Tab Navigation with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     const navItemsJson = JSON.stringify(config.navItems);
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
+import { StatusBar, StyleSheet, SafeAreaView, View, Text, ActivityIndicator, Platform, TouchableOpacity, Dimensions, Image, Animated, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
@@ -1456,12 +1445,13 @@ import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
+import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
-const navItems = ${navItemsJson};
+const navItems = \${navItemsJson};
 const BASE_DOMAIN = '${baseDomain}';
 const SYNC_INTERVAL = 30000;
 const PULL_THRESHOLD = 150;
@@ -1469,6 +1459,47 @@ const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
 const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
+
+// Chromium In-App Browser Configuration
+const BROWSER_CONFIG = {
+  // Android Chrome Custom Tabs settings - uses Chromium engine
+  showTitle: true,
+  toolbarColor: '${navStyle.backgroundColor}',
+  secondaryToolbarColor: '${navStyle.backgroundColor}',
+  navigationBarColor: '${navStyle.backgroundColor}',
+  navigationBarDividerColor: '#333333',
+  enableUrlBarHiding: true,
+  enableDefaultShare: true,
+  forceCloseOnRedirection: false,
+  showInRecents: true,
+  hasBackButton: true,
+  // iOS Safari View Controller settings
+  dismissButtonStyle: 'close',
+  preferredBarTintColor: '${navStyle.backgroundColor}',
+  preferredControlTintColor: '${navStyle.activeIconColor}',
+  readerMode: false,
+  animated: true,
+  modalPresentationStyle: 'automatic',
+  modalTransitionStyle: 'coverVertical',
+  modalEnabled: true,
+  enableBarCollapsing: true,
+};
+
+// Helper function to open URL in Chromium-based in-app browser
+async function openInAppBrowser(url) {
+  try {
+    if (await InAppBrowser.isAvailable()) {
+      const result = await InAppBrowser.open(url, BROWSER_CONFIG);
+      console.log('Browser closed with result:', result.type);
+    } else {
+      // Fallback to system browser if in-app browser not available
+      Linking.openURL(url);
+    }
+  } catch (error) {
+    console.error('Error opening in-app browser:', error);
+    Linking.openURL(url);
+  }
+}
 
 // Icon mapping from Lucide to Ionicons
 const iconMap = {
@@ -1640,79 +1671,27 @@ const OFFLINE_HTML = \`
 </html>
 \`;
 
-function InAppBrowser({ visible, url, onClose }) {
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [browserLoading, setBrowserLoading] = useState(true);
-  const [currentUrl, setCurrentUrl] = useState(url);
-  const browserRef = useRef(null);
-
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (visible && canGoBack && browserRef.current) {
-        browserRef.current.goBack();
-        return true;
-      }
-      if (visible) {
-        onClose();
-        return true;
-      }
-      return false;
-    });
-    return () => backHandler.remove();
-  }, [visible, canGoBack, onClose]);
-
+// Legacy InAppBrowser component - kept for fallback, but primary is Chromium browser
+function InAppBrowserFallback({ visible, url, onClose }) {
+  // This is a fallback component - the main functionality now uses react-native-inappbrowser-reborn
+  // which provides Chrome Custom Tabs on Android and SFSafariViewController on iOS
   if (!visible) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.browserContainer}>
-        <View style={styles.browserHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.browserUrlContainer}>
-            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => canGoBack && browserRef.current?.goBack()} 
-            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
-          >
-            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
-            <Ionicons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        {browserLoading && (
-          <View style={styles.browserLoading}>
-            <ActivityIndicator size="small" color="${navStyle.activeIconColor}" />
-          </View>
-        )}
-        <WebView
-          ref={browserRef}
-          source={{ uri: url }}
-          style={styles.browserWebview}
-          onNavigationStateChange={(navState) => {
-            setCanGoBack(navState.canGoBack);
-            setCurrentUrl(navState.url);
-          }}
-          onLoadStart={() => setBrowserLoading(true)}
-          onLoadEnd={() => setBrowserLoading(false)}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          cacheEnabled={true}
-          cacheMode="LOAD_CACHE_ELSE_NETWORK"
-        />
-      </View>
-    </Modal>
-  );
+  
+  // Use Chromium-based browser immediately
+  useEffect(() => {
+    if (visible && url) {
+      openInAppBrowser(url).then(() => {
+        onClose();
+      });
+    }
+  }, [visible, url, onClose]);
+  
+  return null;
 }
 
 function WebViewScreen({ url }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [browserUrl, setBrowserUrl] = useState('');
-  const [showBrowser, setShowBrowser] = useState(false);
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
@@ -1815,8 +1794,8 @@ function WebViewScreen({ url }) {
                          !requestUrl.startsWith('about:') && 
                          !requestUrl.startsWith('javascript:');
       if (isExternal) {
-        setBrowserUrl(requestUrl);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(requestUrl);
         return false;
       }
     } catch (e) {}
@@ -1883,8 +1862,8 @@ function WebViewScreen({ url }) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
       } else if (data.type === 'external_link' && data.url) {
-        setBrowserUrl(data.url);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(data.url);
       }
     } catch (e) {}
   };
@@ -1960,19 +1939,21 @@ function WebViewScreen({ url }) {
           )}
         </TouchableOpacity>
       )}
-
-      <InAppBrowser 
-        visible={showBrowser} 
-        url={browserUrl} 
-        onClose={() => setShowBrowser(false)} 
-      />
     </SafeAreaView>
   );
 }
 
-// External Link Screen - opens external URL in in-app browser
+// External Link Screen - opens external URL in Chromium-based in-app browser
 function ExternalLinkScreen({ url, label }) {
-  const [showBrowser, setShowBrowser] = useState(true);
+  // Open in Chromium browser when component mounts or when button is pressed
+  const handleOpenBrowser = useCallback(() => {
+    openInAppBrowser(url);
+  }, [url]);
+  
+  // Auto-open on mount
+  useEffect(() => {
+    handleOpenBrowser();
+  }, [handleOpenBrowser]);
   
   return (
     <SafeAreaView style={styles.container}>
@@ -1982,16 +1963,11 @@ function ExternalLinkScreen({ url, label }) {
         <Text style={styles.externalText}>{label}</Text>
         <TouchableOpacity 
           style={styles.openExternalButton}
-          onPress={() => setShowBrowser(true)}
+          onPress={handleOpenBrowser}
         >
           <Text style={styles.openExternalButtonText}>Open Link</Text>
         </TouchableOpacity>
       </View>
-      <InAppBrowser 
-        visible={showBrowser} 
-        url={url} 
-        onClose={() => setShowBrowser(false)} 
-      />
     </SafeAreaView>
   );
 }
@@ -2168,12 +2144,13 @@ const styles = StyleSheet.create({
   } else {
     // Without navigation - Simple WebView with In-App Browser, Rigid Pull To Refresh, Speed Optimization, Real-time Sync, and Offline Support
     return `import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Modal, BackHandler, Dimensions, PanResponder, Image, Animated } from 'react-native';
+import { StatusBar, StyleSheet, View, Text, ActivityIndicator, Platform, TouchableOpacity, Dimensions, Image, Animated, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
+import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync();
@@ -2185,6 +2162,47 @@ const CACHE_KEY = 'OFFLINE_HTML_CACHE';
 const SPLASH_DURATION = 4000; // Show splash for 4 seconds
 const SPLASH_BG_COLOR = '${splashBgColor}';
 const LOADING_TIMEOUT = 15000; // Force hide loading after 15 seconds
+
+// Chromium In-App Browser Configuration
+const BROWSER_CONFIG = {
+  // Android Chrome Custom Tabs settings - uses Chromium engine
+  showTitle: true,
+  toolbarColor: '#1a1a1a',
+  secondaryToolbarColor: '#1a1a1a',
+  navigationBarColor: '#1a1a1a',
+  navigationBarDividerColor: '#333333',
+  enableUrlBarHiding: true,
+  enableDefaultShare: true,
+  forceCloseOnRedirection: false,
+  showInRecents: true,
+  hasBackButton: true,
+  // iOS Safari View Controller settings
+  dismissButtonStyle: 'close',
+  preferredBarTintColor: '#1a1a1a',
+  preferredControlTintColor: '#007AFF',
+  readerMode: false,
+  animated: true,
+  modalPresentationStyle: 'automatic',
+  modalTransitionStyle: 'coverVertical',
+  modalEnabled: true,
+  enableBarCollapsing: true,
+};
+
+// Helper function to open URL in Chromium-based in-app browser
+async function openInAppBrowser(url) {
+  try {
+    if (await InAppBrowser.isAvailable()) {
+      const result = await InAppBrowser.open(url, BROWSER_CONFIG);
+      console.log('Browser closed with result:', result.type);
+    } else {
+      // Fallback to system browser if in-app browser not available
+      Linking.openURL(url);
+    }
+  } catch (error) {
+    console.error('Error opening in-app browser:', error);
+    Linking.openURL(url);
+  }
+}
 
 // Custom Splash Screen Component
 function CustomSplashScreen({ onFinish }) {
@@ -2326,79 +2344,27 @@ const OFFLINE_HTML = \`
 </html>
 \`;
 
-function InAppBrowser({ visible, url, onClose }) {
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [browserLoading, setBrowserLoading] = useState(true);
-  const [currentUrl, setCurrentUrl] = useState(url);
-  const browserRef = useRef(null);
-
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (visible && canGoBack && browserRef.current) {
-        browserRef.current.goBack();
-        return true;
-      }
-      if (visible) {
-        onClose();
-        return true;
-      }
-      return false;
-    });
-    return () => backHandler.remove();
-  }, [visible, canGoBack, onClose]);
-
+// Legacy InAppBrowser component - kept for fallback, but primary is Chromium browser
+function InAppBrowserFallback({ visible, url, onClose }) {
+  // This is a fallback component - the main functionality now uses react-native-inappbrowser-reborn
+  // which provides Chrome Custom Tabs on Android and SFSafariViewController on iOS
   if (!visible) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.browserContainer}>
-        <View style={styles.browserHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.browserButton}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.browserUrlContainer}>
-            <Text style={styles.browserUrl} numberOfLines={1}>{currentUrl}</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => canGoBack && browserRef.current?.goBack()} 
-            style={[styles.browserButton, !canGoBack && styles.browserButtonDisabled]}
-          >
-            <Ionicons name="arrow-back" size={24} color={canGoBack ? "#fff" : "#666"} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => browserRef.current?.reload()} style={styles.browserButton}>
-            <Ionicons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        {browserLoading && (
-          <View style={styles.browserLoading}>
-            <ActivityIndicator size="small" color="#007AFF" />
-          </View>
-        )}
-        <WebView
-          ref={browserRef}
-          source={{ uri: url }}
-          style={styles.browserWebview}
-          onNavigationStateChange={(navState) => {
-            setCanGoBack(navState.canGoBack);
-            setCurrentUrl(navState.url);
-          }}
-          onLoadStart={() => setBrowserLoading(true)}
-          onLoadEnd={() => setBrowserLoading(false)}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          cacheEnabled={true}
-          cacheMode="LOAD_CACHE_ELSE_NETWORK"
-        />
-      </View>
-    </Modal>
-  );
+  
+  // Use Chromium-based browser immediately
+  useEffect(() => {
+    if (visible && url) {
+      openInAppBrowser(url).then(() => {
+        onClose();
+      });
+    }
+  }, [visible, url, onClose]);
+  
+  return null;
 }
 
 function MainContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [browserUrl, setBrowserUrl] = useState('');
-  const [showBrowser, setShowBrowser] = useState(false);
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
@@ -2502,8 +2468,8 @@ function MainContent() {
                          !requestUrl.startsWith('about:') && 
                          !requestUrl.startsWith('javascript:');
       if (isExternal) {
-        setBrowserUrl(requestUrl);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(requestUrl);
         return false;
       }
     } catch (e) {}
@@ -2570,8 +2536,8 @@ function MainContent() {
         AsyncStorage.setItem(CACHE_KEY + '_main', data.html);
         setCachedHtml(data.html);
       } else if (data.type === 'external_link' && data.url) {
-        setBrowserUrl(data.url);
-        setShowBrowser(true);
+        // Open external links in Chromium-based in-app browser
+        openInAppBrowser(data.url);
       }
     } catch (e) {}
   };
@@ -2647,12 +2613,6 @@ function MainContent() {
           )}
         </TouchableOpacity>
       )}
-
-      <InAppBrowser 
-        visible={showBrowser} 
-        url={browserUrl} 
-        onClose={() => setShowBrowser(false)} 
-      />
     </View>
   );
 }
