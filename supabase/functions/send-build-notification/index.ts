@@ -3,8 +3,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
+if (!RESEND_API_KEY) {
+  console.error("RESEND_API_KEY is not configured");
+}
+
 // Helper function to send email via Resend API
 async function sendEmail(to: string, subject: string, html: string) {
+  console.log("Attempting to send email to:", to);
+  console.log("Subject:", subject);
+  console.log("RESEND_API_KEY configured:", !!RESEND_API_KEY);
+  
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -19,12 +27,15 @@ async function sendEmail(to: string, subject: string, html: string) {
     }),
   });
   
+  const responseText = await response.text();
+  console.log("Resend API response status:", response.status);
+  console.log("Resend API response:", responseText);
+  
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to send email: ${error}`);
+    throw new Error(`Failed to send email: ${responseText}`);
   }
   
-  return await response.json();
+  return JSON.parse(responseText);
 }
 
 const corsHeaders = {
