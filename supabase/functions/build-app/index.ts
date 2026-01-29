@@ -819,8 +819,7 @@ function WebViewScreen({ url }) {
   const [refreshing, setRefreshing] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
   const [showBrowser, setShowBrowser] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
+  const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
@@ -901,39 +900,21 @@ function WebViewScreen({ url }) {
     return () => clearInterval(syncInterval);
   }, [loading, isOffline, cachePageContent]);
 
-  const handleRefresh = useCallback(() => {
-    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
-      setRefreshing(true);
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-      setTimeout(() => {
-        setRefreshing(false);
-        setPullDistance(0);
-      }, 1500);
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
     }
-  }, [scrollY, pullDistance]);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1500);
+  }, []);
 
-  // Rigid pull-to-refresh with PanResponder
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (scrollY <= 0 && gestureState.dy > 0) {
-          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
-        }
-      },
-      onPanResponderRelease: () => {
-        if (pullDistance >= PULL_THRESHOLD) {
-          handleRefresh();
-        } else {
-          setPullDistance(0);
-        }
-      },
-    })
-  ).current;
+  // Show refresh button when scrolled to top
+  const handleScrollChange = useCallback((scrollY) => {
+    setShowRefreshButton(scrollY <= 50);
+  }, []);
 
   const handleNavigationRequest = (request) => {
     const requestUrl = request.url;
@@ -1006,7 +987,7 @@ function WebViewScreen({ url }) {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
-        setScrollY(data.y);
+        handleScrollChange(data.y);
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
@@ -1029,22 +1010,8 @@ function WebViewScreen({ url }) {
   };
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      
-      {/* Pull to refresh indicator */}
-      {pullDistance > 0 && (
-        <View style={[styles.pullIndicator, { height: pullDistance }]}>
-          <ActivityIndicator 
-            size="small" 
-            color="${navStyle.activeIconColor}" 
-            style={{ opacity: pullDistance / PULL_THRESHOLD }}
-          />
-          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
-            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
-          </Text>
-        </View>
-      )}
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -1064,7 +1031,7 @@ function WebViewScreen({ url }) {
       <WebView
         ref={webViewRef}
         source={getWebViewSource()}
-        style={[styles.webview, { marginTop: pullDistance }]}
+        style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={false}
@@ -1089,6 +1056,21 @@ function WebViewScreen({ url }) {
         onError={() => setIsOffline(true)}
         onHttpError={() => setIsOffline(true)}
       />
+
+      {/* Floating Refresh Button */}
+      {showRefreshButton && !loading && (
+        <TouchableOpacity 
+          style={styles.refreshButton} 
+          onPress={handleManualRefresh}
+          activeOpacity={0.8}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="refresh" size={22} color="#fff" />
+          )}
+        </TouchableOpacity>
+      )}
 
       <InAppBrowser 
         visible={showBrowser} 
@@ -1183,20 +1165,22 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
-  pullIndicator: {
+  refreshButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '${navStyle.backgroundColor}',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '${navStyle.activeIconColor}',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
     zIndex: 100,
-  },
-  pullText: {
-    color: '#fff',
-    fontSize: 12,
-    marginTop: 5,
   },
   drawerContent: {
     flex: 1,
@@ -1538,8 +1522,7 @@ function WebViewScreen({ url }) {
   const [refreshing, setRefreshing] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
   const [showBrowser, setShowBrowser] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
+  const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
@@ -1617,38 +1600,21 @@ function WebViewScreen({ url }) {
     return () => clearInterval(syncInterval);
   }, [loading, isOffline, cachePageContent]);
 
-  const handleRefresh = useCallback(() => {
-    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
-      setRefreshing(true);
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-      setTimeout(() => {
-        setRefreshing(false);
-        setPullDistance(0);
-      }, 1500);
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
     }
-  }, [scrollY, pullDistance]);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1500);
+  }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (scrollY <= 0 && gestureState.dy > 0) {
-          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
-        }
-      },
-      onPanResponderRelease: () => {
-        if (pullDistance >= PULL_THRESHOLD) {
-          handleRefresh();
-        } else {
-          setPullDistance(0);
-        }
-      },
-    })
-  ).current;
+  // Show refresh button when scrolled to top
+  const handleScrollChange = useCallback((scrollY) => {
+    setShowRefreshButton(scrollY <= 50);
+  }, []);
 
   const handleNavigationRequest = (request) => {
     const requestUrl = request.url;
@@ -1721,7 +1687,7 @@ function WebViewScreen({ url }) {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
-        setScrollY(data.y);
+        handleScrollChange(data.y);
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_' + url, data.html);
         setCachedHtml(data.html);
@@ -1743,21 +1709,8 @@ function WebViewScreen({ url }) {
   };
 
   return (
-    <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      
-      {pullDistance > 0 && (
-        <View style={[styles.pullIndicator, { height: pullDistance }]}>
-          <ActivityIndicator 
-            size="small" 
-            color="${navStyle.activeIconColor}" 
-            style={{ opacity: pullDistance / PULL_THRESHOLD }}
-          />
-          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
-            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
-          </Text>
-        </View>
-      )}
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -1776,7 +1729,7 @@ function WebViewScreen({ url }) {
       <WebView
         ref={webViewRef}
         source={getWebViewSource()}
-        style={[styles.webview, { marginTop: pullDistance }]}
+        style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={false}
@@ -1801,6 +1754,21 @@ function WebViewScreen({ url }) {
         onError={() => setIsOffline(true)}
         onHttpError={() => setIsOffline(true)}
       />
+
+      {/* Floating Refresh Button */}
+      {showRefreshButton && !loading && (
+        <TouchableOpacity 
+          style={styles.refreshButton} 
+          onPress={handleManualRefresh}
+          activeOpacity={0.8}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="refresh" size={22} color="#fff" />
+          )}
+        </TouchableOpacity>
+      )}
 
       <InAppBrowser 
         visible={showBrowser} 
@@ -1880,20 +1848,22 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
-  pullIndicator: {
+  refreshButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '${navStyle.backgroundColor}',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '${navStyle.activeIconColor}',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
     zIndex: 100,
-  },
-  pullText: {
-    color: '#fff',
-    fontSize: 12,
-    marginTop: 5,
   },
   browserContainer: {
     flex: 1,
@@ -2185,8 +2155,7 @@ function MainContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('');
   const [showBrowser, setShowBrowser] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
+  const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [cachedHtml, setCachedHtml] = useState(null);
   const webViewRef = useRef(null);
@@ -2265,38 +2234,21 @@ function MainContent() {
     return () => clearInterval(syncInterval);
   }, [loading, isOffline, cachePageContent]);
 
-  const handleRefresh = useCallback(() => {
-    if (scrollY <= 0 && pullDistance >= PULL_THRESHOLD) {
-      setRefreshing(true);
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-      setTimeout(() => {
-        setRefreshing(false);
-        setPullDistance(0);
-      }, 1500);
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
     }
-  }, [scrollY, pullDistance]);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1500);
+  }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return scrollY <= 0 && gestureState.dy > 10 && Math.abs(gestureState.dx) < 50;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (scrollY <= 0 && gestureState.dy > 0) {
-          setPullDistance(Math.min(gestureState.dy, PULL_THRESHOLD + 50));
-        }
-      },
-      onPanResponderRelease: () => {
-        if (pullDistance >= PULL_THRESHOLD) {
-          handleRefresh();
-        } else {
-          setPullDistance(0);
-        }
-      },
-    })
-  ).current;
+  // Show refresh button when scrolled to top
+  const handleScrollChange = useCallback((scrollY) => {
+    setShowRefreshButton(scrollY <= 50);
+  }, []);
 
   const handleNavigationRequest = (request) => {
     const requestUrl = request.url;
@@ -2369,7 +2321,7 @@ function MainContent() {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
-        setScrollY(data.y);
+        handleScrollChange(data.y);
       } else if (data.type === 'cache' && data.html) {
         AsyncStorage.setItem(CACHE_KEY + '_main', data.html);
         setCachedHtml(data.html);
@@ -2391,21 +2343,8 @@ function MainContent() {
   };
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      
-      {pullDistance > 0 && (
-        <View style={[styles.pullIndicator, { height: pullDistance }]}>
-          <ActivityIndicator 
-            size="small" 
-            color="#007AFF" 
-            style={{ opacity: pullDistance / PULL_THRESHOLD }}
-          />
-          <Text style={[styles.pullText, { opacity: pullDistance / PULL_THRESHOLD }]}>
-            {pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh'}
-          </Text>
-        </View>
-      )}
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -2424,7 +2363,7 @@ function MainContent() {
       <WebView
         ref={webViewRef}
         source={getWebViewSource()}
-        style={[styles.webview, { marginTop: pullDistance }]}
+        style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={false}
@@ -2449,6 +2388,21 @@ function MainContent() {
         onError={() => setIsOffline(true)}
         onHttpError={() => setIsOffline(true)}
       />
+
+      {/* Floating Refresh Button */}
+      {showRefreshButton && !loading && (
+        <TouchableOpacity 
+          style={styles.refreshButton} 
+          onPress={handleManualRefresh}
+          activeOpacity={0.8}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="refresh" size={22} color="#fff" />
+          )}
+        </TouchableOpacity>
+      )}
 
       <InAppBrowser 
         visible={showBrowser} 
@@ -2501,20 +2455,22 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
-  pullIndicator: {
+  refreshButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1a1a1a',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
     zIndex: 100,
-  },
-  pullText: {
-    color: '#fff',
-    fontSize: 12,
-    marginTop: 5,
   },
   browserContainer: {
     flex: 1,
