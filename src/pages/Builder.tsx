@@ -33,6 +33,7 @@ interface NavItem {
   label: string;
   url: string;
   icon: string;
+  isExternal?: boolean;
 }
 
 interface KeystoreConfig {
@@ -90,7 +91,7 @@ const Builder = () => {
   const [enableNavigation, setEnableNavigation] = useState(false);
   const [navigationType, setNavigationType] = useState<"tabs" | "drawer">("tabs");
   const [navItems, setNavItems] = useState<NavItem[]>([
-    { id: "1", label: "Home", url: "/", icon: "home" },
+    { id: "1", label: "Home", url: "/", icon: "home", isExternal: false },
   ]);
   const [navBarStyle, setNavBarStyle] = useState<NavBarStyle>({
     backgroundColor: "#1a1a1a",
@@ -210,7 +211,7 @@ const Builder = () => {
     setSplashConfig({ image: null, backgroundColor: "#ffffff", resizeMode: "contain" });
     setEnableNavigation(false);
     setNavigationType("tabs");
-    setNavItems([{ id: "1", label: "Home", url: "/", icon: "home" }]);
+    setNavItems([{ id: "1", label: "Home", url: "/", icon: "home", isExternal: false }]);
     setNavBarStyle({
       backgroundColor: "#1a1a1a",
       activeIconColor: "#007AFF",
