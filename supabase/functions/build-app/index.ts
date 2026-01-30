@@ -482,11 +482,11 @@ workflows:
       - name: Patch Boost podspec URL (fix checksum mismatch)
         script: |
           BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
-          if [ -f "$BOOST_PODSPEC" ]; then
+          if [ -f "\$BOOST_PODSPEC" ]; then
             echo "Patching Boost podspec with working mirror..."
             BOOST_URL="https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2"
-            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|$BOOST_URL|g" "$BOOST_PODSPEC"
-            grep -n "spec.source" "$BOOST_PODSPEC" || true
+            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|\$BOOST_URL|g" "\$BOOST_PODSPEC"
+            grep -n "spec.source" "\$BOOST_PODSPEC" || true
           else
             echo "Boost podspec not found (skipping patch)"
           fi
