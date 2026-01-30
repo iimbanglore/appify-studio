@@ -345,19 +345,53 @@ workflows:
           npx expo prebuild --platform android --clean --no-install
       - name: Fix Android SDK version for SDK 34 compatibility
         script: |
-          # Update build.gradle to use compileSdkVersion 34 and Android Gradle Plugin 8.x
-          sed -i 's/compileSdkVersion = 33/compileSdkVersion = 34/g' android/build.gradle
-          sed -i 's/targetSdkVersion = 33/targetSdkVersion = 34/g' android/build.gradle
-          sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' android/build.gradle
-          sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/build.gradle
-          # Update gradle wrapper to support AGP 8.x
-          sed -i 's/gradle-7\\.5\\.1/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
-          sed -i 's/gradle-7\\.4\\.2/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
-          sed -i 's/gradle-7\\.6/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
-          # Update Android Gradle Plugin version
-          sed -i 's/com.android.tools.build:gradle:7\\.4\\.2/com.android.tools.build:gradle:8.3.0/g' android/build.gradle
-          sed -i 's/com.android.tools.build:gradle:7\\.3\\.1/com.android.tools.build:gradle:8.3.0/g' android/build.gradle
-          cat android/build.gradle | head -50
+          echo "=== Fixing Android SDK 34 compatibility ==="
+          
+          # Show current state for debugging
+          echo "--- Current android/build.gradle ---"
+          cat android/build.gradle
+          
+          echo "--- Current android/app/build.gradle ---"
+          head -80 android/app/build.gradle
+          
+          # Fix project-level build.gradle - update AGP to 8.3.0
+          sed -i '' "s/com.android.tools.build:gradle:[0-9.]*'/com.android.tools.build:gradle:8.3.0'/g" android/build.gradle 2>/dev/null || \
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*'/com.android.tools.build:gradle:8.3.0'/g" android/build.gradle
+          
+          # Fix app-level build.gradle - update SDK versions
+          # Handle both formats: compileSdkVersion 33 and compileSdk 33
+          sed -i '' 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' android/app/build.gradle 2>/dev/null || \
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' android/app/build.gradle
+          
+          sed -i '' 's/compileSdk [0-9]*/compileSdk 34/g' android/app/build.gradle 2>/dev/null || \
+          sed -i 's/compileSdk [0-9]*/compileSdk 34/g' android/app/build.gradle
+          
+          sed -i '' 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || \
+          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' android/app/build.gradle
+          
+          sed -i '' 's/targetSdk [0-9]*/targetSdk 34/g' android/app/build.gradle 2>/dev/null || \
+          sed -i 's/targetSdk [0-9]*/targetSdk 34/g' android/app/build.gradle
+          
+          # Update gradle-wrapper.properties for Gradle 8.3
+          sed -i '' 's|gradle-[0-9.]*-|gradle-8.3-|g' android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || \
+          sed -i 's|gradle-[0-9.]*-|gradle-8.3-|g' android/gradle/wrapper/gradle-wrapper.properties
+          
+          # Also fix ext block in project build.gradle if it exists
+          sed -i '' 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/build.gradle 2>/dev/null || \
+          sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/build.gradle
+          
+          sed -i '' 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/build.gradle 2>/dev/null || \
+          sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/build.gradle
+          
+          # Show updated files for verification
+          echo "=== Updated android/build.gradle ==="
+          cat android/build.gradle
+          
+          echo "=== Updated android/app/build.gradle (first 80 lines) ==="
+          head -80 android/app/build.gradle
+          
+          echo "=== Updated gradle-wrapper.properties ==="
+          cat android/gradle/wrapper/gradle-wrapper.properties
       - name: Set up local.properties
         script: |
           echo "sdk.dir=\$ANDROID_SDK_ROOT" > android/local.properties
