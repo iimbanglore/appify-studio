@@ -358,12 +358,23 @@ workflows:
           }
           upsert_prop android.compileSdkVersion 34
           upsert_prop android.targetSdkVersion 34
-          find android -name "build.gradle" -exec sed -i.bak "s/compileSdkVersion [0-9]*/compileSdkVersion 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak "s/targetSdkVersion [0-9]*/targetSdkVersion 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak "s/compileSdk [0-9]*/compileSdk 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak "s/targetSdk [0-9]*/targetSdk 34/g" {} \\;
-          find android -name "build.gradle.kts" -exec sed -i.bak "s/compileSdk = [0-9]*/compileSdk = 34/g" {} \\;
-          find android -name "build.gradle.kts" -exec sed -i.bak "s/targetSdk = [0-9]*/targetSdk = 34/g" {} \\;
+          echo "--- Patching build.gradle files for SDK 34 ---"
+          # First handle Integer.parseInt patterns (replace entire expression)
+          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/compileSdkVersion = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/targetSdkVersion = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdk[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/compileSdk = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdk[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/targetSdk = 34/g" {} \\;
+          # Then handle simple numeric assignments
+          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]*=[[:space:]]*[0-9]+/compileSdkVersion = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]*=[[:space:]]*[0-9]+/targetSdkVersion = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]+/compileSdk = 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdk[[:space:]]*=[[:space:]]*[0-9]+/targetSdk = 34/g" {} \\;
+          # Handle Groovy DSL without = sign (e.g., compileSdkVersion 35)
+          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]+[0-9]+\$/compileSdkVersion 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]+[0-9]+\$/targetSdkVersion 34/g" {} \\;
+          # Handle Kotlin DSL
+          find android -name "build.gradle.kts" -exec sed -i.bak -E "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]+/compileSdk = 34/g" {} \\;
+          find android -name "build.gradle.kts" -exec sed -i.bak -E "s/targetSdk[[:space:]]*=[[:space:]]*[0-9]+/targetSdk = 34/g" {} \\;
           echo "--- Verify patched values ---"
           grep -r "compileSdk" android/app/build.gradle 2>/dev/null || true
           grep -r "targetSdk" android/app/build.gradle 2>/dev/null || true
