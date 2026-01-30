@@ -134,7 +134,7 @@ serve(async (req) => {
 
     const results: Record<string, boolean> = {};
 
-    // 1. package.json - Using Expo SDK 49 for better Gradle compatibility
+    // 1. package.json - Using Expo SDK 51 for Android SDK 34 compatibility
     const packageJson = {
       name: "webview-app-template",
       version: "1.0.0",
@@ -148,25 +148,26 @@ serve(async (req) => {
         "build:ios": "eas build --platform ios --profile preview --local"
       },
       dependencies: {
-        "expo": "~49.0.0",
-        "expo-status-bar": "~1.6.0",
-        "expo-splash-screen": "~0.20.5",
+        "expo": "~51.0.0",
+        "expo-status-bar": "~1.12.1",
+        "expo-splash-screen": "~0.27.5",
         "react": "18.2.0",
-        "react-native": "0.72.6",
-        "react-native-webview": "13.6.2",
-        "@react-navigation/native": "^6.1.9",
-        "@react-navigation/bottom-tabs": "^6.5.11",
-        "@react-navigation/drawer": "^6.6.6",
-        "react-native-gesture-handler": "~2.12.0",
-        "react-native-reanimated": "~3.3.0",
-        "react-native-screens": "~3.22.0",
-        "react-native-safe-area-context": "4.6.3",
-        "@expo/vector-icons": "^13.0.0",
-        "@react-native-community/netinfo": "~9.3.10",
-        "@react-native-async-storage/async-storage": "1.18.2"
+        "react-native": "0.74.5",
+        "react-native-webview": "13.8.6",
+        "@react-navigation/native": "^6.1.18",
+        "@react-navigation/bottom-tabs": "^6.6.1",
+        "@react-navigation/drawer": "^6.7.2",
+        "react-native-gesture-handler": "~2.16.1",
+        "react-native-reanimated": "~3.10.1",
+        "react-native-screens": "~3.31.1",
+        "react-native-safe-area-context": "4.10.5",
+        "@expo/vector-icons": "^14.0.2",
+        "@react-native-community/netinfo": "~11.3.1",
+        "@react-native-async-storage/async-storage": "1.23.1",
+        "react-native-inappbrowser-reborn": "^3.7.0"
       },
       devDependencies: {
-        "@babel/core": "^7.20.0"
+        "@babel/core": "^7.24.0"
       },
       private: true
     };
