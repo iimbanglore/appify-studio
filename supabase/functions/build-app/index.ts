@@ -343,15 +343,30 @@ workflows:
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
+      - name: Fix Android SDK version for SDK 34 compatibility
+        script: |
+          # Update build.gradle to use compileSdkVersion 34 and Android Gradle Plugin 8.x
+          sed -i 's/compileSdkVersion = 33/compileSdkVersion = 34/g' android/build.gradle
+          sed -i 's/targetSdkVersion = 33/targetSdkVersion = 34/g' android/build.gradle
+          sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' android/build.gradle
+          sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/build.gradle
+          # Update gradle wrapper to support AGP 8.x
+          sed -i 's/gradle-7\\.5\\.1/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/gradle-7\\.4\\.2/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/gradle-7\\.6/gradle-8.3/g' android/gradle/wrapper/gradle-wrapper.properties
+          # Update Android Gradle Plugin version
+          sed -i 's/com.android.tools.build:gradle:7\\.4\\.2/com.android.tools.build:gradle:8.3.0/g' android/build.gradle
+          sed -i 's/com.android.tools.build:gradle:7\\.3\\.1/com.android.tools.build:gradle:8.3.0/g' android/build.gradle
+          cat android/build.gradle | head -50
       - name: Set up local.properties
         script: |
           echo "sdk.dir=\$ANDROID_SDK_ROOT" > android/local.properties
       - name: Build Android APK
         script: |
-          cd android && ./gradlew assembleRelease --no-daemon
+          cd android && ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Build Android App Bundle (AAB)
         script: |
-          cd android && ./gradlew bundleRelease --no-daemon
+          cd android && ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Organize artifacts
         script: |
           mkdir -p \$CM_BUILD_DIR/build/outputs
