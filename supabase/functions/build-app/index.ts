@@ -343,38 +343,30 @@ workflows:
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
-       - name: Ensure Android SDK 34
-         script: |
-           echo "=== Ensuring Android compile/target SDK 34 (without overriding Expo's Gradle/AGP) ==="
-
-           PROP_FILE="android/gradle.properties"
-
-           upsert_prop () {
-             KEY="$1"
-             VALUE="$2"
-             if [ -f "$PROP_FILE" ] && grep -q "^$KEY=" "$PROP_FILE"; then
-               sed -i.bak "s/^$KEY=.*/$KEY=$VALUE/" "$PROP_FILE"
-             else
-               echo "$KEY=$VALUE" >> "$PROP_FILE"
-             fi
-           }
-
-           # Expo reads these properties when generating native projects.
-           upsert_prop android.compileSdkVersion 34
-           upsert_prop android.targetSdkVersion 34
-
-           # Patch any generated Gradle files to use SDK 34 (Groovy + Kotlin DSL)
-           find android -name "build.gradle" -exec sed -i.bak "s/compileSdkVersion [0-9]*/compileSdkVersion 34/g" {} \\;
-           find android -name "build.gradle" -exec sed -i.bak "s/targetSdkVersion [0-9]*/targetSdkVersion 34/g" {} \\;
-           find android -name "build.gradle" -exec sed -i.bak "s/compileSdk [0-9]*/compileSdk 34/g" {} \\;
-           find android -name "build.gradle" -exec sed -i.bak "s/targetSdk [0-9]*/targetSdk 34/g" {} \\;
-           find android -name "build.gradle.kts" -exec sed -i.bak "s/compileSdk = [0-9]*/compileSdk = 34/g" {} \\;
-           find android -name "build.gradle.kts" -exec sed -i.bak "s/targetSdk = [0-9]*/targetSdk = 34/g" {} \\;
-
-           echo "--- Verify patched values ---"
-           grep -r "compileSdk" android/app/build.gradle 2>/dev/null || true
-           grep -r "targetSdk" android/app/build.gradle 2>/dev/null || true
-           (cd android && ./gradlew --version) || true
+      - name: Ensure Android SDK 34
+        script: |
+          echo "=== Ensuring Android compile/target SDK 34 ==="
+          PROP_FILE="android/gradle.properties"
+          upsert_prop () {
+            KEY="\$1"
+            VALUE="\$2"
+            if [ -f "\$PROP_FILE" ] && grep -q "^\$KEY=" "\$PROP_FILE"; then
+              sed -i.bak "s/^\$KEY=.*/\$KEY=\$VALUE/" "\$PROP_FILE"
+            else
+              echo "\$KEY=\$VALUE" >> "\$PROP_FILE"
+            fi
+          }
+          upsert_prop android.compileSdkVersion 34
+          upsert_prop android.targetSdkVersion 34
+          find android -name "build.gradle" -exec sed -i.bak "s/compileSdkVersion [0-9]*/compileSdkVersion 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak "s/targetSdkVersion [0-9]*/targetSdkVersion 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak "s/compileSdk [0-9]*/compileSdk 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak "s/targetSdk [0-9]*/targetSdk 34/g" {} \\;
+          find android -name "build.gradle.kts" -exec sed -i.bak "s/compileSdk = [0-9]*/compileSdk = 34/g" {} \\;
+          find android -name "build.gradle.kts" -exec sed -i.bak "s/targetSdk = [0-9]*/targetSdk = 34/g" {} \\;
+          echo "--- Verify patched values ---"
+          grep -r "compileSdk" android/app/build.gradle 2>/dev/null || true
+          grep -r "targetSdk" android/app/build.gradle 2>/dev/null || true
       - name: Set up local.properties
         script: |
           echo "sdk.dir=\$ANDROID_SDK_ROOT" > android/local.properties
