@@ -288,37 +288,38 @@ web-build/
       vars:
         PACKAGE_NAME: com.app.webview
       node: 18.17.0
-      java: 17
+      java: "17"
     scripts:
       - name: Install dependencies
-        script: npm install
+        script: |
+          npm install
+          npm install sharp
       - name: Generate Android project
         script: npx expo prebuild --platform android --clean --no-install
-      - name: Install Android dependencies
-        script: cd android && ./gradlew --version
-      - name: Set up local.properties
-        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-      - name: Mark build started
+      - name: Fix Android SDK version for SDK 34 compatibility
         script: |
-          curl -X POST "${webhookUrl}" \\
-            -H "Content-Type: application/json" \\
-            -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "building"}'
+          echo "android.compileSdkVersion=34" >> android/gradle.properties
+          echo "android.targetSdkVersion=34" >> android/gradle.properties
+          sed -i.bak 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.2.1-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
+          find android -name "build.gradle" -exec sed -i.bak "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.2.2/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak "s/compileSdkVersion [0-9]*/compileSdkVersion 34/g" {} \\;
+          find android -name "build.gradle" -exec sed -i.bak "s/targetSdkVersion [0-9]*/targetSdkVersion 34/g" {} \\;
+      - name: Set up local.properties
+        script: echo "sdk.dir=\\$ANDROID_SDK_ROOT" > android/local.properties
       - name: Build Android APK
         script: |
-          cd android
-          ./gradlew assembleRelease --no-daemon
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          cd android && ./gradlew assembleRelease --no-daemon
       - name: Build Android App Bundle (AAB)
         script: |
-          cd android
-          ./gradlew bundleRelease --no-daemon
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          cd android && ./gradlew bundleRelease --no-daemon
       - name: Copy build outputs
         script: |
-          mkdir -p $CM_BUILD_DIR/build/outputs
-          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
-          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
-          ls -la $CM_BUILD_DIR/build/outputs/
-      - name: Mark build success
-        script: touch ~/SUCCESS
+          mkdir -p \\$CM_BUILD_DIR/build/outputs
+          find android/app/build/outputs -name "*.apk" -exec cp {} \\$CM_BUILD_DIR/build/outputs/ \\;
+          find android/app/build/outputs -name "*.aab" -exec cp {} \\$CM_BUILD_DIR/build/outputs/ \\;
+          ls -la \\$CM_BUILD_DIR/build/outputs/
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
@@ -327,24 +328,10 @@ web-build/
     publishing:
       email:
         recipients:
-          - your-email@example.com
+          - team@example.com
         notify:
           success: true
           failure: true
-      scripts:
-        - name: Report build status
-          script: |
-            if [ -f ~/SUCCESS ]; then
-              APK_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".apk")) | .url' | head -1)
-              AAB_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".aab")) | .url' | head -1)
-              curl -X POST "${webhookUrl}" \\
-                -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.apk", "url": "'"$APK_URL"'", "type": "apk"}, {"name": "app.aab", "url": "'"$AAB_URL"'", "type": "aab"}]}'
-            else
-              curl -X POST "${webhookUrl}" \\
-                -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "android-workflow", "branch": "'"$CM_BRANCH"'", "status": "failed", "error": "Build failed"}'
-            fi
 
   ios-workflow:
     name: iOS Build
@@ -360,75 +347,47 @@ web-build/
       cocoapods: default
     scripts:
       - name: Install dependencies
-        script: npm install
+        script: |
+          npm install
+          npm install sharp
       - name: Generate iOS project
         script: npx expo prebuild --platform ios --clean --no-install
-      - name: Patch Boost podspec URL (fix checksum mismatch)
+      - name: Patch Boost podspec URL
         script: |
           BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
-          if [ -f "$BOOST_PODSPEC" ]; then
-            echo "Patching Boost podspec with working mirror..."
+          if [ -f "\\$BOOST_PODSPEC" ]; then
             BOOST_URL="https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2"
-            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|$BOOST_URL|g" "$BOOST_PODSPEC"
-            grep -n "spec.source" "$BOOST_PODSPEC" || true
-          else
-            echo "Boost podspec not found (skipping patch)"
+            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|\\$BOOST_URL|g" "\\$BOOST_PODSPEC"
           fi
-      - name: Setup Ruby and CocoaPods
-        script: |
-          gem install cocoapods
-          pod repo update
       - name: Install CocoaPods
         script: |
           cd ios
           rm -rf Pods Podfile.lock
-          rm -rf ~/Library/Caches/CocoaPods ~/.cocoapods/repos || true
-          pod cache clean boost --all || true
-          pod install --repo-update --clean-install --verbose
-      - name: Mark build started
-        script: |
-          curl -X POST "${webhookUrl}" \\
-            -H "Content-Type: application/json" \\
-            -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "building"}'
+          pod repo update
+          pod install --repo-update --clean-install
       - name: Build iOS Archive
         script: |
           cd ios
-          SCHEME_NAME=$(xcodebuild -list -json | jq -r '.project.schemes[0]')
-          xcodebuild -workspace *.xcworkspace -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          SCHEME_NAME=\\$(xcodebuild -list -json | jq -r '.project.schemes[0]')
+          xcodebuild -workspace *.xcworkspace -scheme "\\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \\$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
       - name: Create unsigned IPA
         script: |
-          mkdir -p $CM_BUILD_DIR/build/ipa
-          cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications
+          mkdir -p \\$CM_BUILD_DIR/build/ipa
+          cd \\$CM_BUILD_DIR/build/App.xcarchive/Products/Applications
           mkdir -p Payload
           cp -r *.app Payload/
-          zip -r $CM_BUILD_DIR/build/ipa/App.ipa Payload
-          ls -la $CM_BUILD_DIR/build/ipa/
-      - name: Mark build success
-        script: touch ~/SUCCESS
+          zip -r \\$CM_BUILD_DIR/build/ipa/App.ipa Payload
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
     publishing:
       email:
         recipients:
-          - your-email@example.com
+          - team@example.com
         notify:
           success: true
-          failure: true
-      scripts:
-        - name: Report build status
-          script: |
-            if [ -f ~/SUCCESS ]; then
-              IPA_URL=$(echo $CM_ARTIFACT_LINKS | jq -r '.[] | select(.name | endswith(".ipa")) | .url' | head -1)
-              curl -X POST "${webhookUrl}" \\
-                -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "finished", "artefacts": [{"name": "app.ipa", "url": "'"$IPA_URL"'", "type": "ipa"}]}'
-            else
-              curl -X POST "${webhookUrl}" \\
-                -H "Content-Type: application/json" \\
-                -d '{"buildId": "'"$CM_BUILD_ID"'", "appId": "'"$CM_PROJECT_ID"'", "workflowId": "ios-workflow", "branch": "'"$CM_BRANCH"'", "status": "failed", "error": "Build failed"}'
-            fi`;
-    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Update codemagic.yaml with Xcode 16.2, AAB and IPA support');
+          failure: true`;
+    results['codemagic.yaml'] = await createGitHubFile('codemagic.yaml', codemagicYaml, 'Update codemagic.yaml with SDK 34 fix');
 
     // 7. README.md
     const readme = `# WebView App Template
