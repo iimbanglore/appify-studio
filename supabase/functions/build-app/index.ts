@@ -345,61 +345,125 @@ workflows:
           npx expo prebuild --platform android --clean --no-install
       - name: Fix Android SDK version for SDK 34 compatibility
         script: |
-          echo "=== Fixing Android SDK 34 compatibility ==="
+          echo "=== Enforcing Android SDK 34 + compatible Gradle/AGP ==="
           
-          # Show current state for debugging
-          echo "--- Current android/build.gradle ---"
-          cat android/build.gradle
+          # Use a deterministic patcher instead of sed (handles Groovy/Kotlin DSL + different templates)
+          cat > patch-android.js << 'PATCHSCRIPT'
+          const fs = require('fs');
           
-          echo "--- Current android/app/build.gradle ---"
-          head -80 android/app/build.gradle
+          const DESIRED_COMPILE_SDK = 34;
+          const DESIRED_TARGET_SDK = 34;
+          // AGP 8.2.2 supports compileSdk 34 and works with Gradle 8.2.1
+          const DESIRED_AGP = '8.2.2';
+          const DESIRED_GRADLE_DIST = 'https\\://services.gradle.org/distributions/gradle-8.2.1-all.zip';
           
-          # Fix project-level build.gradle - update AGP to 8.3.0
-          sed -i '' "s/com.android.tools.build:gradle:[0-9.]*'/com.android.tools.build:gradle:8.3.0'/g" android/build.gradle 2>/dev/null || \
-          sed -i "s/com.android.tools.build:gradle:[0-9.]*'/com.android.tools.build:gradle:8.3.0'/g" android/build.gradle
+          function readText(file) {
+            return fs.readFileSync(file, 'utf8');
+          }
           
-          # Fix app-level build.gradle - update SDK versions
-          # Handle both formats: compileSdkVersion 33 and compileSdk 33
-          sed -i '' 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' android/app/build.gradle 2>/dev/null || \
-          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' android/app/build.gradle
+          function writeText(file, text) {
+            fs.writeFileSync(file, text);
+          }
           
-          sed -i '' 's/compileSdk [0-9]*/compileSdk 34/g' android/app/build.gradle 2>/dev/null || \
-          sed -i 's/compileSdk [0-9]*/compileSdk 34/g' android/app/build.gradle
+          function patchFile(file, replacers) {
+            if (!fs.existsSync(file)) return false;
+            let text = readText(file);
+            const before = text;
+            for (const [re, replacement] of replacers) {
+              text = text.replace(re, replacement);
+            }
+            if (text !== before) {
+              writeText(file, text);
+              return true;
+            }
+            return false;
+          }
           
-          sed -i '' 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || \
-          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' android/app/build.gradle
+          function upsertProp(file, key, value) {
+            if (!fs.existsSync(file)) return;
+            let text = readText(file);
+            // Avoid template interpolation by keeping '$' last in the character class.
+            const escapedKey = key.replace(/[.*+?^{}()|[\\]\\$]/g, '\\$&');
+            const re = new RegExp('^\\s*' + escapedKey + '\\s*=.*$', 'm');
+            const line = key + '=' + value;
+            if (re.test(text)) {
+              text = text.replace(re, line);
+            } else {
+              if (!text.endsWith('\n')) text += '\n';
+              text += line + '\n';
+            }
+            writeText(file, text);
+          }
           
-          sed -i '' 's/targetSdk [0-9]*/targetSdk 34/g' android/app/build.gradle 2>/dev/null || \
-          sed -i 's/targetSdk [0-9]*/targetSdk 34/g' android/app/build.gradle
+          // 1) Ensure gradle.properties opts into SDK 34 if the template uses findProperty(...)
+          if (fs.existsSync('android/gradle.properties')) {
+            upsertProp('android/gradle.properties', 'android.compileSdkVersion', String(DESIRED_COMPILE_SDK));
+            upsertProp('android/gradle.properties', 'android.targetSdkVersion', String(DESIRED_TARGET_SDK));
+          }
           
-          # Update gradle-wrapper.properties for Gradle 8.3
-          sed -i '' 's|gradle-[0-9.]*-|gradle-8.3-|g' android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || \
-          sed -i 's|gradle-[0-9.]*-|gradle-8.3-|g' android/gradle/wrapper/gradle-wrapper.properties
+          // 2) Update Gradle wrapper
+          patchFile('android/gradle/wrapper/gradle-wrapper.properties', [
+            [/^distributionUrl=.*$/m, 'distributionUrl=' + DESIRED_GRADLE_DIST],
+          ]);
           
-          # Also fix ext block in project build.gradle if it exists
-          sed -i '' 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/build.gradle 2>/dev/null || \
-          sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/build.gradle
+          // 3) Update AGP wherever it appears
+          const agpReplacers = [
+            // buildscript classpath (Groovy)
+            [/com\\.android\\.tools\\.build:gradle:[0-9.]+/g, 'com.android.tools.build:gradle:' + DESIRED_AGP],
+            // plugins DSL (Groovy)
+            [/id ['\"]com\\.android\\.application['\"] version ['\"][0-9.]+['\"]/g, 'id "com.android.application" version "' + DESIRED_AGP + '"'],
+            [/id ['\"]com\\.android\\.library['\"] version ['\"][0-9.]+['\"]/g, 'id "com.android.library" version "' + DESIRED_AGP + '"'],
+            // plugins DSL (Kotlin)
+            [/id\\(\"com\\.android\\.application\"\\) version \"[0-9.]+\"/g, 'id("com.android.application") version "' + DESIRED_AGP + '"'],
+            [/id\\(\"com\\.android\\.library\"\\) version \"[0-9.]+\"/g, 'id("com.android.library") version "' + DESIRED_AGP + '"'],
+            // classpath Kotlin
+            [/classpath\\(\"com\\.android\\.tools\\.build:gradle:[0-9.]+\"\\)/g, 'classpath("com.android.tools.build:gradle:' + DESIRED_AGP + '")'],
+          ];
           
-          sed -i '' 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/build.gradle 2>/dev/null || \
-          sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/build.gradle
+          patchFile('android/build.gradle', agpReplacers);
+          patchFile('android/build.gradle.kts', agpReplacers);
+          patchFile('android/settings.gradle', agpReplacers);
+          patchFile('android/settings.gradle.kts', agpReplacers);
           
-          # Show updated files for verification
-          echo "=== Updated android/build.gradle ==="
-          cat android/build.gradle
+          // 4) Force compileSdk/targetSdk in common places (when literals exist)
+          const sdkReplacers = [
+            [/compileSdkVersion\\s*=\\s*\\d+/g, 'compileSdkVersion = ' + DESIRED_COMPILE_SDK],
+            [/targetSdkVersion\\s*=\\s*\\d+/g, 'targetSdkVersion = ' + DESIRED_TARGET_SDK],
+            [/compileSdkVersion\\s+\\d+/g, 'compileSdkVersion ' + DESIRED_COMPILE_SDK],
+            [/targetSdkVersion\\s+\\d+/g, 'targetSdkVersion ' + DESIRED_TARGET_SDK],
+            [/compileSdk\\s*=\\s*\\d+/g, 'compileSdk = ' + DESIRED_COMPILE_SDK],
+            [/targetSdk\\s*=\\s*\\d+/g, 'targetSdk = ' + DESIRED_TARGET_SDK],
+            [/compileSdk\\s+\\d+/g, 'compileSdk ' + DESIRED_COMPILE_SDK],
+            [/targetSdk\\s+\\d+/g, 'targetSdk ' + DESIRED_TARGET_SDK],
+            // expo templates sometimes use findProperty fallbacks like '33'
+            [/(findProperty\\('android\\.compileSdkVersion'\\)\\s*\\?:\\s*')\\d+(')/g, '$1' + DESIRED_COMPILE_SDK + '$2'],
+            [/(findProperty\\('android\\.targetSdkVersion'\\)\\s*\\?:\\s*')\\d+(')/g, '$1' + DESIRED_TARGET_SDK + '$2'],
+          ];
           
-          echo "=== Updated android/app/build.gradle (first 80 lines) ==="
-          head -80 android/app/build.gradle
+          patchFile('android/build.gradle', sdkReplacers);
+          patchFile('android/build.gradle.kts', sdkReplacers);
+          patchFile('android/app/build.gradle', sdkReplacers);
+          patchFile('android/app/build.gradle.kts', sdkReplacers);
           
-          echo "=== Updated gradle-wrapper.properties ==="
-          cat android/gradle/wrapper/gradle-wrapper.properties
+          console.log('Patched Android project to compileSdk ' + DESIRED_COMPILE_SDK + ', targetSdk ' + DESIRED_TARGET_SDK + ', AGP ' + DESIRED_AGP);
+          PATCHSCRIPT
+          
+          node patch-android.js
+          
+          echo "--- Verify patched values (best-effort) ---"
+          (grep -R "compileSdk" -n android/app/build.gradle android/app/build.gradle.kts android/build.gradle android/build.gradle.kts 2>/dev/null || true)
+          (grep -R "com.android.tools.build:gradle" -n android/build.gradle android/build.gradle.kts android/settings.gradle android/settings.gradle.kts 2>/dev/null || true)
+          (grep -n "^distributionUrl" android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || true)
       - name: Set up local.properties
         script: |
           echo "sdk.dir=\$ANDROID_SDK_ROOT" > android/local.properties
       - name: Build Android APK
         script: |
+          export NODE_OPTIONS="--max-old-space-size=4096"
           cd android && ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Build Android App Bundle (AAB)
         script: |
+          export NODE_OPTIONS="--max-old-space-size=4096"
           cd android && ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Organize artifacts
         script: |
