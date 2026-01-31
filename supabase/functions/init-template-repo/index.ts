@@ -311,25 +311,37 @@ web-build/
           }
           upsert_prop android.compileSdkVersion 34
           upsert_prop android.targetSdkVersion 34
-          echo "--- Patching build.gradle files for SDK 34 ---"
-          # First handle Integer.parseInt patterns (replace entire expression)
-          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/compileSdkVersion = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/targetSdkVersion = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdk[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/compileSdk = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdk[[:space:]]*=[[:space:]]*Integer\\.parseInt\\([^)]+\\)/targetSdk = 34/g" {} \\;
-          # Then handle simple numeric assignments
-          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]*=[[:space:]]*[0-9]+/compileSdkVersion = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]*=[[:space:]]*[0-9]+/targetSdkVersion = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]+/compileSdk = 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdk[[:space:]]*=[[:space:]]*[0-9]+/targetSdk = 34/g" {} \\;
-          # Handle Groovy DSL without = sign (e.g., compileSdkVersion 35)
-          find android -name "build.gradle" -exec sed -i.bak -E "s/compileSdkVersion[[:space:]]+[0-9]+\$/compileSdkVersion 34/g" {} \\;
-          find android -name "build.gradle" -exec sed -i.bak -E "s/targetSdkVersion[[:space:]]+[0-9]+\$/targetSdkVersion 34/g" {} \\;
+          echo "--- Patching Android app module Gradle files for SDK 34 (safe) ---"
+          # IMPORTANT: Only patch the app module files.
+          # Patching every build.gradle under android/ can corrupt Gradle plugin build scripts.
+          APP_GRADLE="android/app/build.gradle"
+          APP_GRADLE_KTS="android/app/build.gradle.kts"
+
+          patch_app_groovy () {
+            FILE="\$1"
+            echo "Patching \$FILE"
+            sed -i.bak -E "s/^([[:space:]]*)compileSdkVersion([[:space:]]*=.*|[[:space:]]+[0-9]+.*)\$/\\1compileSdkVersion 34/g" "\$FILE" || true
+            sed -i.bak -E "s/^([[:space:]]*)targetSdkVersion([[:space:]]*=.*|[[:space:]]+[0-9]+.*)\$/\\1targetSdkVersion 34/g" "\$FILE" || true
+          }
+
+          patch_app_kts () {
+            FILE="\$1"
+            echo "Patching \$FILE"
+            sed -i.bak -E "s/^([[:space:]]*)compileSdk[[:space:]]*=.*\$/\\1compileSdk = 34/g" "\$FILE" || true
+            sed -i.bak -E "s/^([[:space:]]*)targetSdk[[:space:]]*=.*\$/\\1targetSdk = 34/g" "\$FILE" || true
+          }
+
+          if [ -f "\$APP_GRADLE" ]; then
+            patch_app_groovy "\$APP_GRADLE"
+          fi
+          if [ -f "\$APP_GRADLE_KTS" ]; then
+            patch_app_kts "\$APP_GRADLE_KTS"
+          fi
+
           echo "--- Verify patched values ---"
-          grep -r "compileSdk" android/app/build.gradle 2>/dev/null || true
-          grep -r "targetSdk" android/app/build.gradle 2>/dev/null || true
+          grep -nE "compileSdk|targetSdk" android/app/build.gradle* 2>/dev/null || true
       - name: Set up local.properties
-        script: echo "sdk.dir=\\$ANDROID_SDK_ROOT" > android/local.properties
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
@@ -340,10 +352,10 @@ web-build/
           cd android && ./gradlew bundleRelease --no-daemon
       - name: Copy build outputs
         script: |
-          mkdir -p \\$CM_BUILD_DIR/build/outputs
-          find android/app/build/outputs -name "*.apk" -exec cp {} \\$CM_BUILD_DIR/build/outputs/ \\;
-          find android/app/build/outputs -name "*.aab" -exec cp {} \\$CM_BUILD_DIR/build/outputs/ \\;
-          ls -la \\$CM_BUILD_DIR/build/outputs/
+          mkdir -p $CM_BUILD_DIR/build/outputs
+          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          ls -la $CM_BUILD_DIR/build/outputs/
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
@@ -379,9 +391,9 @@ web-build/
       - name: Patch Boost podspec URL
         script: |
           BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
-          if [ -f "\\$BOOST_PODSPEC" ]; then
+          if [ -f "$BOOST_PODSPEC" ]; then
             BOOST_URL="https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2"
-            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|\\$BOOST_URL|g" "\\$BOOST_PODSPEC"
+            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|$BOOST_URL|g" "$BOOST_PODSPEC"
           fi
       - name: Install CocoaPods
         script: |
@@ -392,15 +404,23 @@ web-build/
       - name: Build iOS Archive
         script: |
           cd ios
-          SCHEME_NAME=\\$(xcodebuild -list -json | jq -r '.project.schemes[0]')
-          xcodebuild -workspace *.xcworkspace -scheme "\\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \\$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          WORKSPACE=$(ls -1 *.xcworkspace 2>/dev/null | head -n 1)
+          if [ -z "$WORKSPACE" ]; then
+            echo "No .xcworkspace found in ios/"; exit 1
+          fi
+          SCHEME_NAME=$(xcodebuild -list -json -workspace "$WORKSPACE" | jq -r '.workspace.schemes[0] // .project.schemes[0] // empty')
+          if [ -z "$SCHEME_NAME" ]; then
+            echo "Could not detect scheme from workspace $WORKSPACE"; xcodebuild -list -workspace "$WORKSPACE"; exit 1
+          fi
+          echo "Using workspace: $WORKSPACE | scheme: $SCHEME_NAME"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
       - name: Create unsigned IPA
         script: |
-          mkdir -p \\$CM_BUILD_DIR/build/ipa
-          cd \\$CM_BUILD_DIR/build/App.xcarchive/Products/Applications
+          mkdir -p $CM_BUILD_DIR/build/ipa
+          cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications
           mkdir -p Payload
           cp -r *.app Payload/
-          zip -r \\$CM_BUILD_DIR/build/ipa/App.ipa Payload
+          zip -r $CM_BUILD_DIR/build/ipa/App.ipa Payload
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
