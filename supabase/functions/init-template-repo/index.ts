@@ -341,15 +341,21 @@ web-build/
           echo "--- Verify patched values ---"
           grep -nE "compileSdk|targetSdk" android/app/build.gradle* 2>/dev/null || true
       - name: Set up local.properties
-        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+        script: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDK_DIR="$ANDROID_SDK_ROOT"
+          if [ -z "$SDK_DIR" ]; then SDK_DIR="$ANDROID_HOME"; fi
+          if [ -z "$SDK_DIR" ]; then echo "Missing Android SDK path (ANDROID_SDK_ROOT/ANDROID_HOME)"; exit 1; fi
+          echo "sdk.dir=$SDK_DIR" > android/local.properties
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew assembleRelease --no-daemon
+          cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace
       - name: Build Android App Bundle (AAB)
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew bundleRelease --no-daemon
+          cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace
       - name: Copy build outputs
         script: |
           mkdir -p $CM_BUILD_DIR/build/outputs
