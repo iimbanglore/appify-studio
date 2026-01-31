@@ -390,15 +390,20 @@ workflows:
            grep -nE "compileSdk|targetSdk" android/app/build.gradle* 2>/dev/null || true
       - name: Set up local.properties
         script: |
-          echo "sdk.dir=\$ANDROID_SDK_ROOT" > android/local.properties
+           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+           echo "ANDROID_HOME=$ANDROID_HOME"
+           SDK_DIR="$ANDROID_SDK_ROOT"
+           if [ -z "$SDK_DIR" ]; then SDK_DIR="$ANDROID_HOME"; fi
+           if [ -z "$SDK_DIR" ]; then echo "Missing Android SDK path (ANDROID_SDK_ROOT/ANDROID_HOME)"; exit 1; fi
+           echo "sdk.dir=$SDK_DIR" > android/local.properties
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
+           cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Build Android App Bundle (AAB)
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
+           cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Organize artifacts
         script: |
           mkdir -p \$CM_BUILD_DIR/build/outputs
@@ -2792,9 +2797,9 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
       scripts: [
         { name: 'Install dependencies', script: 'npm install' },
         { name: 'Generate Android project', script: 'npx expo prebuild --platform android --clean --no-install' },
-        { name: 'Set up local.properties', script: 'echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties' },
-        { name: 'Build Android APK', script: 'cd android && ./gradlew assembleRelease --no-daemon' },
-        { name: 'Build Android App Bundle (AAB)', script: 'cd android && ./gradlew bundleRelease --no-daemon' },
+        { name: 'Set up local.properties', script: 'echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" && echo "ANDROID_HOME=$ANDROID_HOME" && SDK_DIR="$ANDROID_SDK_ROOT" && [ -z "$SDK_DIR" ] && SDK_DIR="$ANDROID_HOME" || true && [ -n "$SDK_DIR" ] && echo "sdk.dir=$SDK_DIR" > android/local.properties' },
+        { name: 'Build Android APK', script: 'cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace' },
+        { name: 'Build Android App Bundle (AAB)', script: 'cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace' },
         { name: 'Copy AAB to artifacts', script: 'mkdir -p $CM_BUILD_DIR/build/outputs && find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;' },
         { name: 'Copy APK to artifacts', script: 'find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;' },
       ],
