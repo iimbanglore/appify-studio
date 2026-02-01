@@ -299,47 +299,44 @@ web-build/
       - name: Ensure Android SDK 34
         script: |
           echo "=== Ensuring Android compile/target SDK 34 ==="
+          
+          # Step 1: Update gradle.properties (safest method)
           PROP_FILE="android/gradle.properties"
-          upsert_prop () {
-            KEY="\$1"
-            VALUE="\$2"
-            if [ -f "\$PROP_FILE" ] && grep -q "^\$KEY=" "\$PROP_FILE"; then
-              sed -i.bak "s/^\$KEY=.*/\$KEY=\$VALUE/" "\$PROP_FILE"
-            else
-              echo "\$KEY=\$VALUE" >> "\$PROP_FILE"
-            fi
-          }
-          upsert_prop android.compileSdkVersion 34
-          upsert_prop android.targetSdkVersion 34
-          echo "--- Patching Android app module Gradle files for SDK 34 (safe) ---"
-          # IMPORTANT: Only patch the app module files.
-          # Patching every build.gradle under android/ can corrupt Gradle plugin build scripts.
-          APP_GRADLE="android/app/build.gradle"
-          APP_GRADLE_KTS="android/app/build.gradle.kts"
-
-          patch_app_groovy () {
-            FILE="\$1"
-            echo "Patching \$FILE"
-            sed -i.bak -E "s/^([[:space:]]*)compileSdkVersion([[:space:]]*=.*|[[:space:]]+[0-9]+.*)\$/\\1compileSdkVersion 34/g" "\$FILE" || true
-            sed -i.bak -E "s/^([[:space:]]*)targetSdkVersion([[:space:]]*=.*|[[:space:]]+[0-9]+.*)\$/\\1targetSdkVersion 34/g" "\$FILE" || true
-          }
-
-          patch_app_kts () {
-            FILE="\$1"
-            echo "Patching \$FILE"
-            sed -i.bak -E "s/^([[:space:]]*)compileSdk[[:space:]]*=.*\$/\\1compileSdk = 34/g" "\$FILE" || true
-            sed -i.bak -E "s/^([[:space:]]*)targetSdk[[:space:]]*=.*\$/\\1targetSdk = 34/g" "\$FILE" || true
-          }
-
-          if [ -f "\$APP_GRADLE" ]; then
-            patch_app_groovy "\$APP_GRADLE"
+          echo "android.compileSdkVersion=34" >> "$PROP_FILE"
+          echo "android.targetSdkVersion=34" >> "$PROP_FILE"
+          echo "Updated gradle.properties with SDK 34"
+          
+          # Step 2: Debug - show what files exist
+          echo "--- Listing android/ structure ---"
+          ls -la android/
+          echo "--- Listing android/app/ structure ---"
+          ls -la android/app/ || true
+          
+          # Step 3: Show first 10 lines of root build.gradle to verify it's intact
+          echo "--- Root build.gradle (first 10 lines) ---"
+          head -n 10 android/build.gradle 2>/dev/null || head -n 10 android/build.gradle.kts 2>/dev/null || echo "No root build.gradle found"
+          
+          # Step 4: Only patch android/app/build.gradle.kts (Expo SDK 51 uses Kotlin DSL)
+          APP_BUILD_FILE="android/app/build.gradle.kts"
+          if [ -f "$APP_BUILD_FILE" ]; then
+            echo "--- Patching $APP_BUILD_FILE for SDK 34 ---"
+            sed -i.bak 's/compileSdk = [0-9]*/compileSdk = 34/g' "$APP_BUILD_FILE"
+            sed -i.bak 's/targetSdk = [0-9]*/targetSdk = 34/g' "$APP_BUILD_FILE"
+            echo "Patched $APP_BUILD_FILE"
+            grep -n "compileSdk\|targetSdk" "$APP_BUILD_FILE" || true
           fi
-          if [ -f "\$APP_GRADLE_KTS" ]; then
-            patch_app_kts "\$APP_GRADLE_KTS"
+          
+          # Step 5: Also handle legacy Groovy format if present
+          APP_BUILD_GROOVY="android/app/build.gradle"
+          if [ -f "$APP_BUILD_GROOVY" ] && [ ! -f "$APP_BUILD_FILE" ]; then
+            echo "--- Patching $APP_BUILD_GROOVY for SDK 34 ---"
+            sed -i.bak 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' "$APP_BUILD_GROOVY"
+            sed -i.bak 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' "$APP_BUILD_GROOVY"
+            echo "Patched $APP_BUILD_GROOVY"
+            grep -n "compileSdk\|targetSdk" "$APP_BUILD_GROOVY" || true
           fi
-
-          echo "--- Verify patched values ---"
-          grep -nE "compileSdk|targetSdk" android/app/build.gradle* 2>/dev/null || true
+          
+          echo "=== SDK 34 enforcement complete ==="
       - name: Set up local.properties
         script: |
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
