@@ -501,6 +501,13 @@ workflows:
       - name: Generate iOS project
         script: |
           npx expo prebuild --platform ios --clean --no-install
+      - name: Fix Node path for Xcode bundling
+        script: |
+          NODE_BIN="$(command -v node || which node)"
+          echo "Using NODE_BINARY=$NODE_BIN"
+          # React Native build phases (react-native-xcode.sh) read this file.
+          echo "export NODE_BINARY=$NODE_BIN" > ios/.xcode.env.local
+          cat ios/.xcode.env.local
       - name: Patch Boost podspec URL (fix checksum mismatch)
         script: |
           BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
@@ -520,6 +527,35 @@ workflows:
           pod cache clean boost --all || true
           pod repo update
           pod install --repo-update --clean-install
+      - name: Fix Pods iOS deployment target
+        script: |
+          # Some Pods default to iOS 9.0 which Xcode 16 no longer supports.
+          # Patch Pods.xcodeproj to a supported target so archive doesn't fail.
+          cd ios
+          ruby - <<'RUBY'
+          begin
+            require 'xcodeproj'
+            project_path = 'Pods/Pods.xcodeproj'
+            target_version = '13.4'
+            unless File.exist?(project_path)
+              puts "Pods.xcodeproj not found, skipping"
+              exit 0
+            end
+
+            project = Xcodeproj::Project.open(project_path)
+            project.targets.each do |t|
+              t.build_configurations.each do |c|
+                c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = target_version
+              end
+            end
+            project.save
+            puts "Patched Pods deployment target to #{target_version}"
+          rescue => e
+            puts "Failed to patch Pods deployment target: #{e.class}: #{e.message}"
+            # Don't fail the build just because this patch didn't run.
+            exit 0
+          end
+          RUBY
       - name: Create exportOptions.plist
         script: |
           cat > ios/exportOptions.plist << EOF
@@ -539,6 +575,10 @@ workflows:
       - name: Build iOS Archive
         script: |
           cd ios
+           NODE_BIN=$(command -v node || which node)
+           export NODE_BINARY="$NODE_BIN"
+           export RCT_NO_LAUNCH_PACKAGER=true
+           export CI=1
            WORKSPACE=\$(ls -1 *.xcworkspace 2>/dev/null | head -n 1)
            if [ -z "\$WORKSPACE" ]; then
              echo "No .xcworkspace found in ios/"; exit 1
