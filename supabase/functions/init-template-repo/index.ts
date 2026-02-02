@@ -298,45 +298,22 @@ web-build/
         script: npx expo prebuild --platform android --clean --no-install
       - name: Ensure Android SDK 34
         script: |
-          echo "=== Ensuring Android compile/target SDK 34 ==="
+          echo "=== Ensuring Android SDK 34 via gradle.properties (NO file patching) ==="
           
-          # Step 1: Update gradle.properties (safest method)
+          # ONLY use gradle.properties - avoid any sed patching that can corrupt files
           PROP_FILE="android/gradle.properties"
+          
+          # Append SDK version overrides
+          echo "" >> "$PROP_FILE"
+          echo "# SDK 34 enforcement" >> "$PROP_FILE"
           echo "android.compileSdkVersion=34" >> "$PROP_FILE"
           echo "android.targetSdkVersion=34" >> "$PROP_FILE"
-          echo "Updated gradle.properties with SDK 34"
+          echo "android.minSdkVersion=24" >> "$PROP_FILE"
           
-          # Step 2: Debug - show what files exist
-          echo "--- Listing android/ structure ---"
-          ls -la android/
-          echo "--- Listing android/app/ structure ---"
-          ls -la android/app/ || true
+          echo "Updated gradle.properties:"
+          cat "$PROP_FILE"
           
-          # Step 3: Show first 10 lines of root build.gradle to verify it's intact
-          echo "--- Root build.gradle (first 10 lines) ---"
-          head -n 10 android/build.gradle 2>/dev/null || head -n 10 android/build.gradle.kts 2>/dev/null || echo "No root build.gradle found"
-          
-          # Step 4: Only patch android/app/build.gradle.kts (Expo SDK 51 uses Kotlin DSL)
-          APP_BUILD_FILE="android/app/build.gradle.kts"
-          if [ -f "$APP_BUILD_FILE" ]; then
-            echo "--- Patching $APP_BUILD_FILE for SDK 34 ---"
-            sed -i.bak 's/compileSdk = [0-9]*/compileSdk = 34/g' "$APP_BUILD_FILE"
-            sed -i.bak 's/targetSdk = [0-9]*/targetSdk = 34/g' "$APP_BUILD_FILE"
-            echo "Patched $APP_BUILD_FILE"
-            grep -n "compileSdk\|targetSdk" "$APP_BUILD_FILE" || true
-          fi
-          
-          # Step 5: Also handle legacy Groovy format if present
-          APP_BUILD_GROOVY="android/app/build.gradle"
-          if [ -f "$APP_BUILD_GROOVY" ] && [ ! -f "$APP_BUILD_FILE" ]; then
-            echo "--- Patching $APP_BUILD_GROOVY for SDK 34 ---"
-            sed -i.bak 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' "$APP_BUILD_GROOVY"
-            sed -i.bak 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' "$APP_BUILD_GROOVY"
-            echo "Patched $APP_BUILD_GROOVY"
-            grep -n "compileSdk\|targetSdk" "$APP_BUILD_GROOVY" || true
-          fi
-          
-          echo "=== SDK 34 enforcement complete ==="
+          echo "=== SDK 34 enforcement complete (via gradle.properties only) ==="
       - name: Set up local.properties
         script: |
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
