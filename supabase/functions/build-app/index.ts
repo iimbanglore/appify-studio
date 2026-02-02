@@ -579,16 +579,33 @@ workflows:
            export NODE_BINARY="$NODE_BIN"
            export RCT_NO_LAUNCH_PACKAGER=true
            export CI=1
-           WORKSPACE=\$(ls -1 *.xcworkspace 2>/dev/null | head -n 1)
-           if [ -z "\$WORKSPACE" ]; then
-             echo "No .xcworkspace found in ios/"; exit 1
+           echo "--- ios/ directory listing ---"
+           ls -la
+           echo "--- Searching for Xcode workspace/project ---"
+           WORKSPACE=\$(find . -maxdepth 1 -type d -name "*.xcworkspace" -print | head -n 1)
+           PROJECT=\$(find . -maxdepth 1 -type d -name "*.xcodeproj" -print | head -n 1)
+           WORKSPACE=\${WORKSPACE#./}
+           PROJECT=\${PROJECT#./}
+           echo "Detected workspace: \$WORKSPACE"
+           echo "Detected project: \$PROJECT"
+
+           if [ -n "\$WORKSPACE" ]; then
+             SCHEME_NAME=\$(xcodebuild -list -json -workspace "\$WORKSPACE" | jq -r '.workspace.schemes[0] // empty')
+             if [ -z "\$SCHEME_NAME" ]; then
+               echo "Could not detect scheme from workspace \$WORKSPACE"; xcodebuild -list -workspace "\$WORKSPACE"; exit 1
+             fi
+             echo "Using workspace: \$WORKSPACE | scheme: \$SCHEME_NAME"
+             xcodebuild -workspace "\$WORKSPACE" -scheme "\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+           elif [ -n "\$PROJECT" ]; then
+             SCHEME_NAME=\$(xcodebuild -list -json -project "\$PROJECT" | jq -r '.project.schemes[0] // empty')
+             if [ -z "\$SCHEME_NAME" ]; then
+               echo "Could not detect scheme from project \$PROJECT"; xcodebuild -list -project "\$PROJECT"; exit 1
+             fi
+             echo "Using project: \$PROJECT | scheme: \$SCHEME_NAME"
+             xcodebuild -project "\$PROJECT" -scheme "\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+           else
+             echo "No .xcworkspace or .xcodeproj found in ios/"; exit 1
            fi
-           SCHEME_NAME=\$(xcodebuild -list -json -workspace "\$WORKSPACE" | jq -r '.workspace.schemes[0] // .project.schemes[0] // empty')
-           if [ -z "\$SCHEME_NAME" ]; then
-             echo "Could not detect scheme from workspace \$WORKSPACE"; xcodebuild -list -workspace "\$WORKSPACE"; exit 1
-           fi
-           echo "Using workspace: \$WORKSPACE | scheme: \$SCHEME_NAME"
-           xcodebuild -workspace "\$WORKSPACE" -scheme "\$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
       - name: Create unsigned IPA
         script: |
           mkdir -p \$CM_BUILD_DIR/build/ipa
@@ -2877,7 +2894,35 @@ function generateWorkflowConfig(config: BuildRequest, platform: string) {
 </dict>
 </plist>
 EOF` },
-        { name: 'Build iOS Archive', script: 'cd ios && WORKSPACE=$(ls -1 *.xcworkspace 2>/dev/null | head -n 1) && [ -n "$WORKSPACE" ] && SCHEME_NAME=$(xcodebuild -list -json -workspace "$WORKSPACE" | jq -r \'.workspace.schemes[0] // .project.schemes[0] // empty\') && [ -n "$SCHEME_NAME" ] && echo "Using workspace: $WORKSPACE | scheme: $SCHEME_NAME" && xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO' },
+        { name: 'Build iOS Archive', script: `cd ios
+NODE_BIN=$(command -v node || which node)
+export NODE_BINARY="$NODE_BIN"
+export RCT_NO_LAUNCH_PACKAGER=true
+export CI=1
+
+echo "--- ios/ directory listing ---"
+ls -la
+
+WORKSPACE=$(find . -maxdepth 1 -type d -name "*.xcworkspace" -print | head -n 1)
+PROJECT=$(find . -maxdepth 1 -type d -name "*.xcodeproj" -print | head -n 1)
+WORKSPACE=\${WORKSPACE#./}
+PROJECT=\${PROJECT#./}
+echo "Detected workspace: $WORKSPACE"
+echo "Detected project: $PROJECT"
+
+if [ -n "$WORKSPACE" ]; then
+  SCHEME_NAME=$(xcodebuild -list -json -workspace "$WORKSPACE" | jq -r '.workspace.schemes[0] // empty')
+  [ -n "$SCHEME_NAME" ] || (echo "Could not detect scheme from workspace $WORKSPACE" && xcodebuild -list -workspace "$WORKSPACE" && exit 1)
+  echo "Using workspace: $WORKSPACE | scheme: $SCHEME_NAME"
+  xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+elif [ -n "$PROJECT" ]; then
+  SCHEME_NAME=$(xcodebuild -list -json -project "$PROJECT" | jq -r '.project.schemes[0] // empty')
+  [ -n "$SCHEME_NAME" ] || (echo "Could not detect scheme from project $PROJECT" && xcodebuild -list -project "$PROJECT" && exit 1)
+  echo "Using project: $PROJECT | scheme: $SCHEME_NAME"
+  xcodebuild -project "$PROJECT" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+else
+  echo "No .xcworkspace or .xcodeproj found in ios/" && exit 1
+fi` },
         { name: 'Create unsigned IPA', script: `mkdir -p $CM_BUILD_DIR/build/ipa && cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications && mkdir -p Payload && cp -r *.app Payload/ && zip -r $CM_BUILD_DIR/build/ipa/${appNameClean}.ipa Payload` },
       ],
       artifacts: [
