@@ -247,12 +247,6 @@ workflows:
         PACKAGE_NAME: ${config.packageId}
       node: 18.17.0
       java: "17"
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
       - name: Install dependencies
         script: |
@@ -406,12 +400,6 @@ workflows:
       node: 18.17.0
       xcode: 16.2
       cocoapods: default
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
       - name: Install dependencies
         script: |
@@ -559,8 +547,8 @@ workflows:
            echo "--- ios/ directory listing ---"
            ls -la
            echo "--- Searching for Xcode workspace/project ---"
-           WORKSPACE=\$(find . -maxdepth 1 -type d -name "*.xcworkspace" -print | head -n 1)
-           PROJECT=\$(find . -maxdepth 1 -type d -name "*.xcodeproj" -print | head -n 1)
+            WORKSPACE=\$(find . -maxdepth 1 -type d -name "*.xcworkspace" ! -name "Pods.xcworkspace" -print -quit)
+            PROJECT=\$(find . -maxdepth 1 -type d -name "*.xcodeproj" ! -name "Pods.xcodeproj" -print -quit)
            WORKSPACE=\${WORKSPACE#./}
            PROJECT=\${PROJECT#./}
            echo "Detected workspace: \$WORKSPACE"
@@ -632,16 +620,26 @@ serve(async (req) => {
     console.log('Updating app.json in GitHub...');
     const appJsonSuccess = await updateAppConfig(buildRequest);
     console.log('App.json update result:', appJsonSuccess);
+    if (!appJsonSuccess) {
+      throw new Error('Failed to update app configuration (app.json).');
+    }
 
     // Step 4: Update App.js with navigation config
     console.log('Updating App.js in GitHub...');
     const appCodeSuccess = await updateAppCode(buildRequest);
     console.log('App.js update result:', appCodeSuccess);
+    if (!appCodeSuccess) {
+      throw new Error('Failed to update app code (App.js).');
+    }
 
     // Step 5: Upload codemagic.yaml configuration
     console.log('Uploading codemagic.yaml to GitHub...');
     const codemagicSuccess = await uploadCodemagicConfig(buildRequest);
     console.log('codemagic.yaml upload result:', codemagicSuccess);
+    if (!codemagicSuccess) {
+      // IMPORTANT: if we can’t update the build config, don’t trigger builds with a stale/older script.
+      throw new Error('Failed to update build pipeline configuration (codemagic.yaml).');
+    }
 
     // Generate the React Native/Expo app code for reference
     const appCode = generateAppCode(buildRequest);
@@ -2880,8 +2878,8 @@ export CI=1
 echo "--- ios/ directory listing ---"
 ls -la
 
-WORKSPACE=$(find . -maxdepth 1 -type d -name "*.xcworkspace" -print | head -n 1)
-PROJECT=$(find . -maxdepth 1 -type d -name "*.xcodeproj" -print | head -n 1)
+WORKSPACE=$(find . -maxdepth 1 -type d -name "*.xcworkspace" ! -name "Pods.xcworkspace" -print -quit)
+PROJECT=$(find . -maxdepth 1 -type d -name "*.xcodeproj" ! -name "Pods.xcodeproj" -print -quit)
 WORKSPACE=\${WORKSPACE#./}
 PROJECT=\${PROJECT#./}
 echo "Detected workspace: $WORKSPACE"
