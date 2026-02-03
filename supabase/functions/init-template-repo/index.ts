@@ -427,8 +427,8 @@ web-build/
           echo "--- ios/ directory listing ---"
           ls -la
           echo "--- Searching for Xcode workspace/project ---"
-          WORKSPACE=$(find . -maxdepth 1 -type d -name "*.xcworkspace" -print | head -n 1 | sed 's|^\./||')
-          PROJECT=$(find . -maxdepth 1 -type d -name "*.xcodeproj" -print | head -n 1 | sed 's|^\./||')
+           WORKSPACE=$(find . -maxdepth 1 -type d -name "*.xcworkspace" ! -name "Pods.xcworkspace" -print -quit | sed 's|^\./||')
+           PROJECT=$(find . -maxdepth 1 -type d -name "*.xcodeproj" ! -name "Pods.xcodeproj" -print -quit | sed 's|^\./||')
           echo "Detected workspace: $WORKSPACE"
           echo "Detected project: $PROJECT"
 
