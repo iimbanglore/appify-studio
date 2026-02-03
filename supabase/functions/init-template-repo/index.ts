@@ -51,7 +51,6 @@ async function createGitHubFile(path: string, content: string, message: string):
           message,
           content: btoa(content),
           sha,
-          branch: 'main',
         }),
       }
     );
@@ -111,7 +110,6 @@ async function createPlaceholderImage(path: string): Promise<boolean> {
           message: `Add placeholder ${path}`,
           content: transparentPng,
           sha,
-          branch: 'main',
         }),
       }
     );
@@ -296,6 +294,40 @@ web-build/
           npm install sharp
       - name: Generate Android project
         script: npx expo prebuild --platform android --clean --no-install
+      - name: Patch Android Gradle scripts (stability)
+        script: |
+          echo "=== Android Gradle patch (workaround for intermittent Gradle DSL failures) ==="
+          if [ -f "android/app/build.gradle" ]; then
+            echo "--- android/app/build.gradle (lines 90-140) ---"
+            nl -ba android/app/build.gradle | sed -n '90,140p' || true
+            ruby - <<'RUBY'
+            path = 'android/app/build.gradle'
+            data = File.read(path)
+            fixed = data.gsub('project.rootProject', 'rootProject')
+            if fixed != data
+              File.write(path, fixed)
+              puts "Patched project.rootProject -> rootProject in #{path}"
+            else
+              puts "No project.rootProject occurrences in #{path}"
+            end
+            RUBY
+          fi
+          if [ -f "android/app/build.gradle.kts" ]; then
+            echo "--- android/app/build.gradle.kts (lines 90-140) ---"
+            nl -ba android/app/build.gradle.kts | sed -n '90,140p' || true
+            ruby - <<'RUBY'
+            path = 'android/app/build.gradle.kts'
+            data = File.read(path)
+            fixed = data.gsub('project.rootProject', 'rootProject')
+            if fixed != data
+              File.write(path, fixed)
+              puts "Patched project.rootProject -> rootProject in #{path}"
+            else
+              puts "No project.rootProject occurrences in #{path}"
+            end
+            RUBY
+          fi
+          echo "=== Android Gradle patch complete ==="
       - name: Ensure Android SDK 34
         script: |
           echo "=== Ensuring Android SDK 34 via gradle.properties (NO file patching) ==="

@@ -24,6 +24,40 @@ const GITHUB_REPO_NAME = Deno.env.get('GITHUB_REPO_NAME');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+let cachedGitHubDefaultBranch: string | null = null;
+async function getGitHubDefaultBranch(): Promise<string> {
+  if (cachedGitHubDefaultBranch) return cachedGitHubDefaultBranch;
+  if (!GITHUB_TOKEN || !GITHUB_REPO_OWNER || !GITHUB_REPO_NAME) {
+    // Fallback for local/dev where repo isn't configured.
+    return 'main';
+  }
+
+  try {
+    const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`, {
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Lovable-Build-App',
+      },
+    });
+
+    if (!resp.ok) {
+      console.warn('Failed to fetch GitHub repo metadata; falling back to main');
+      return 'main';
+    }
+
+    const data = await resp.json();
+    const branch = typeof data?.default_branch === 'string' && data.default_branch.length > 0
+      ? data.default_branch
+      : 'main';
+    cachedGitHubDefaultBranch = branch;
+    return branch;
+  } catch (e) {
+    console.warn('Error fetching GitHub default branch; falling back to main', e);
+    return 'main';
+  }
+}
+
 interface SplashConfig {
   image: string | null;
   backgroundColor: string;
@@ -104,7 +138,6 @@ async function updateGitHubFile(path: string, content: string, message: string):
           message,
           content, // Must be base64 encoded
           sha, // Include SHA if updating existing file
-          branch: 'main',
         }),
       }
     );
@@ -337,6 +370,40 @@ workflows:
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
+      - name: Patch Android Gradle scripts (stability)
+        script: |
+          echo "=== Android Gradle patch (workaround for intermittent Gradle DSL failures) ==="
+          if [ -f "android/app/build.gradle" ]; then
+            echo "--- android/app/build.gradle (lines 90-140) ---"
+            nl -ba android/app/build.gradle | sed -n '90,140p' || true
+            ruby - <<'RUBY'
+            path = 'android/app/build.gradle'
+            data = File.read(path)
+            fixed = data.gsub('project.rootProject', 'rootProject')
+            if fixed != data
+              File.write(path, fixed)
+              puts "Patched project.rootProject -> rootProject in #{path}"
+            else
+              puts "No project.rootProject occurrences in #{path}"
+            end
+            RUBY
+          fi
+          if [ -f "android/app/build.gradle.kts" ]; then
+            echo "--- android/app/build.gradle.kts (lines 90-140) ---"
+            nl -ba android/app/build.gradle.kts | sed -n '90,140p' || true
+            ruby - <<'RUBY'
+            path = 'android/app/build.gradle.kts'
+            data = File.read(path)
+            fixed = data.gsub('project.rootProject', 'rootProject')
+            if fixed != data
+              File.write(path, fixed)
+              puts "Patched project.rootProject -> rootProject in #{path}"
+            else
+              puts "No project.rootProject occurrences in #{path}"
+            end
+            RUBY
+          fi
+          echo "=== Android Gradle patch complete ==="
       - name: Ensure Android SDK 34
         script: |
           echo "=== Ensuring Android SDK 34 via gradle.properties (NO file patching) ==="
@@ -650,6 +717,9 @@ serve(async (req) => {
     // Step 5: Trigger Codemagic builds
     const buildResults = [];
 
+    const githubBranch = await getGitHubDefaultBranch();
+    console.log('Using GitHub branch for builds:', githubBranch);
+
     for (const platform of buildRequest.platforms) {
       console.log(`Starting build for platform: ${platform}`);
       
@@ -665,7 +735,7 @@ serve(async (req) => {
         body: JSON.stringify({
           appId: Deno.env.get('CODEMAGIC_APP_ID') || 'default-app',
           workflowId: platform === 'android' ? 'android-workflow' : 'ios-workflow',
-          branch: 'main',
+          branch: githubBranch,
           environment: {
             variables: {
               WEBSITE_URL: buildRequest.websiteUrl,
