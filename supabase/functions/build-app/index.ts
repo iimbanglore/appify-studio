@@ -283,10 +283,10 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          npm install
-          npm install react-native-inappbrowser-reborn
-          npm install @react-native-community/netinfo @react-native-async-storage/async-storage expo-splash-screen
-          npm install sharp
+          # One deterministic install pass (avoid mutating dependencies mid-build)
+          npm install --no-audit --no-fund
+          # Used only for icon processing in CI
+          npm install --no-audit --no-fund sharp
       - name: Process app icons for proper sizing
         script: |
           # Create a Node.js script to process icons with proper sizing and padding
@@ -370,40 +370,51 @@ workflows:
       - name: Generate Android project
         script: |
           npx expo prebuild --platform android --clean --no-install
-      - name: Patch Android Gradle scripts (stability)
+      - name: Fix Gradle rootProject crash (permanent)
         script: |
-          echo "=== Android Gradle patch (workaround for intermittent Gradle DSL failures) ==="
+          set -e
+          echo "=== Diagnosing Android Gradle rootProject crash ==="
           if [ -f "android/app/build.gradle" ]; then
-            echo "--- android/app/build.gradle (lines 90-140) ---"
-            nl -ba android/app/build.gradle | sed -n '90,140p' || true
-            ruby - <<'RUBY'
-            path = 'android/app/build.gradle'
-            data = File.read(path)
-            fixed = data.gsub('project.rootProject', 'rootProject')
-            if fixed != data
-              File.write(path, fixed)
-              puts "Patched project.rootProject -> rootProject in #{path}"
-            else
-              puts "No project.rootProject occurrences in #{path}"
-            end
-            RUBY
+            echo "--- android/app/build.gradle (lines 110-130) ---"
+            nl -ba android/app/build.gradle | sed -n '110,130p' || true
           fi
-          if [ -f "android/app/build.gradle.kts" ]; then
-            echo "--- android/app/build.gradle.kts (lines 90-140) ---"
-            nl -ba android/app/build.gradle.kts | sed -n '90,140p' || true
-            ruby - <<'RUBY'
-            path = 'android/app/build.gradle.kts'
+          echo "--- Searching for '.rootProject' hotspots ---"
+          grep -RIn --line-number --fixed-strings ".rootProject" \
+            android/app/build.gradle \
+            android/app/build.gradle.kts \
+            node_modules/@react-native-community/cli-platform-android/native_modules.gradle \
+            node_modules/expo-modules-autolinking/scripts/android 2>/dev/null || true
+
+          # Patch the known crash pattern:
+          #   (project.)findProject('...').rootProject
+          # where findProject can return null -> "Cannot get property 'rootProject' on null object"
+          ruby - <<'RUBY'
+          def patch_file(path)
             data = File.read(path)
-            fixed = data.gsub('project.rootProject', 'rootProject')
-            if fixed != data
-              File.write(path, fixed)
-              puts "Patched project.rootProject -> rootProject in #{path}"
-            else
-              puts "No project.rootProject occurrences in #{path}"
-            end
-            RUBY
-          fi
-          echo "=== Android Gradle patch complete ==="
+            fixed = data.dup
+            fixed.gsub!(/(project\.)?findProject\([^\)]*\)\.rootProject/, 'rootProject')
+            fixed.gsub!('project.rootProject', 'rootProject')
+            return false if fixed == data
+            File.write(path, fixed)
+            true
+          end
+
+          candidates = [
+            'android/app/build.gradle',
+            'android/app/build.gradle.kts',
+            'node_modules/@react-native-community/cli-platform-android/native_modules.gradle',
+            'node_modules/expo-modules-autolinking/scripts/android/autolinking.gradle',
+            'node_modules/expo-modules-autolinking/scripts/android/autolinking_implementation.gradle',
+          ]
+
+          candidates.each do |p|
+            next unless File.exist?(p)
+            changed = patch_file(p)
+            puts(changed ? "Patched #{p}" : "No patch needed in #{p}")
+          end
+          RUBY
+
+          echo "=== Gradle rootProject crash mitigation complete ==="
       - name: Ensure Android SDK 34
         script: |
           echo "=== Ensuring Android SDK 34 via gradle.properties (NO file patching) ==="
@@ -417,6 +428,7 @@ workflows:
           echo "android.compileSdkVersion=34" >> "\$PROP_FILE"
           echo "android.targetSdkVersion=34" >> "\$PROP_FILE"
           echo "android.minSdkVersion=24" >> "\$PROP_FILE"
+          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" >> "\$PROP_FILE"
           
           echo "Updated gradle.properties:"
           cat "\$PROP_FILE"
@@ -433,11 +445,11 @@ workflows:
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-           cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
+           cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m -Dfile.encoding=UTF-8"
       - name: Build Android App Bundle (AAB)
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-           cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
+           cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m -Dfile.encoding=UTF-8"
       - name: Organize artifacts
         script: |
           mkdir -p \$CM_BUILD_DIR/build/outputs
