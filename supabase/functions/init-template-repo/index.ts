@@ -301,30 +301,49 @@ workflows:
       - name: Fix Gradle rootProject crash (bulletproof)
         script: |
           set -e
-          echo "=== DIAGNOSTIC: Gradle rootProject patching ==="
-          
-          # Show what expo prebuild generated before patching
+          echo "=== DIAGNOSTIC: android/app/build.gradle around line 116 (before patch) ==="
           if [ -f "android/app/build.gradle" ]; then
-            echo "--- android/app/build.gradle (line 110-120 before patch) ---"
-            sed -n '110,120p' android/app/build.gradle || true
+            nl -ba android/app/build.gradle | sed -n '105,130p' || true
           fi
-          
-          # Enhanced Ruby script with multi-line regex support and verbose logging
+
           ruby - <<'RUBY'
-          def patch_file(path)
+          def patch_text(text, aggressive: false)
+            patched = text.dup
+
+            # Multi-line safe patterns
+            patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m, 'rootProject')
+            patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\?\.\s*rootProject/m, 'rootProject')
+            patched.gsub!(/\bproject\s*\.\s*rootProject\b/m, 'rootProject')
+
+            vars = patched
+              .scan(/(?:^|\s)(?:def\s+)?([A-Za-z_]\w*)\s*=\s*(?:project\.)?findProject\([^\)]*\)/m)
+              .flatten
+              .uniq
+
+            vars.each do |v|
+              patched.gsub!(/\b#{Regexp.escape(v)}\s*\.\s*rootProject\b/m, 'rootProject')
+              patched.gsub!(/\b#{Regexp.escape(v)}\s*\.\s*getRootProject\(\)\b/m, 'rootProject')
+            end
+
+            if aggressive
+              patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*rootProject\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
+              patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*getRootProject\(\)\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
+            end
+
+            patched
+          end
+
+          def patch_file(path, aggressive: false)
             return false unless File.exist?(path)
             original = File.read(path)
-            fixed = original.dup
-            
-            # Pattern 1: project.findProject(...).rootProject or findProject(...).rootProject (multi-line safe)
-            fixed.gsub!(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m, 'rootProject')
-            
-            # Pattern 2: direct project.rootProject references
-            fixed.gsub!(/\bproject\.rootProject\b/, 'rootProject')
-            
-            return false if fixed == original
-            File.write(path, fixed)
+            patched = patch_text(original, aggressive: aggressive)
+            return false if patched == original
+            File.write(path, patched)
+            puts "PATCHED: #{path}"
             true
+          rescue => e
+            puts "ERROR patching #{path}: #{e.message}"
+            false
           end
 
           candidates = [
@@ -339,30 +358,28 @@ workflows:
             'node_modules/expo-modules-autolinking/scripts/android/autolinking_implementation.gradle',
           ]
 
-          puts "Files to scan:"
+          puts "Files to scan:";
           candidates.each { |p| puts "  #{File.exist?(p) ? '✓' : '✗'} #{p}" }
-          puts ""
 
           patched_count = 0
           candidates.each do |p|
-            if patch_file(p)
-              puts "✓ PATCHED: #{p}"
-              patched_count += 1
-            else
-              puts "  skipped: #{p} (no match or missing)"
-            end
+            patched_count += 1 if patch_file(p, aggressive: (p == 'android/app/build.gradle'))
           end
-          
-          puts ""
+
           puts "Total files patched: #{patched_count}"
           RUBY
-          
-          # Show patched result for verification
+
+          echo "=== DIAGNOSTIC: android/app/build.gradle around line 116 (after patch) ==="
           if [ -f "android/app/build.gradle" ]; then
-            echo "--- android/app/build.gradle (line 110-120 after patch) ---"
-            sed -n '110,120p' android/app/build.gradle || true
+            nl -ba android/app/build.gradle | sed -n '105,130p' || true
           fi
-          
+
+          echo "=== Preflight: fail if any '.rootProject' remains in android/app/build.gradle ==="
+          if [ -f "android/app/build.gradle" ] && grep -nE '\\.[[:space:]]*rootProject' android/app/build.gradle; then
+            echo "ERROR: Remaining .rootProject references detected (would still risk NPE)."
+            exit 1
+          fi
+
           echo "=== Gradle rootProject patching complete ==="
       - name: Configure Android SDK 34
         script: |
