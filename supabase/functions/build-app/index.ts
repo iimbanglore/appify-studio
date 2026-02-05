@@ -214,13 +214,78 @@ workflows:
         script: npm install --no-audit --no-fund && npm install --no-audit --no-fund sharp
       - name: Generate Android
         script: npx expo prebuild --platform android --clean --no-install
-      - name: Patch Gradle
+      - name: Patch Gradle (comprehensive)
         script: |
           set -e
-          ruby - <<'RUBY'
-          def patch(p); return false unless File.exist?(p); d=File.read(p); f=d.gsub(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m,'rootProject').gsub(/\bproject\.rootProject\b/,'rootProject'); return false if f==d; File.write(p,f); true; end
-          %w[android/app/build.gradle android/build.gradle android/settings.gradle node_modules/@react-native-community/cli-platform-android/native_modules.gradle node_modules/expo-modules-autolinking/scripts/android/autolinking.gradle node_modules/expo-modules-autolinking/scripts/android/autolinking_implementation.gradle].each{|p| puts patch(p) ? "Patched #{p}" : "Skip #{p}"}
-          RUBY
+          echo "=== Patching Gradle files to fix rootProject null issues ==="
+          
+          # Create a comprehensive patch script
+          cat > /tmp/patch_gradle.rb << 'PATCHSCRIPT'
+          require 'fileutils'
+          
+          def patch_file(path)
+            return false unless File.exist?(path)
+            original = File.read(path)
+            patched = original.dup
+            
+            # Pattern 1: project.findProject(...)?.rootProject or project.findProject(...).rootProject
+            patched.gsub!(/project\\.findProject\\([^)]*\\)\\??\\.rootProject/, 'rootProject')
+            
+            # Pattern 2: findProject(...)?.rootProject or findProject(...).rootProject  
+            patched.gsub!(/(?<!project\\.)findProject\\([^)]*\\)\\??\\.rootProject/, 'rootProject')
+            
+            # Pattern 3: project.rootProject (but not rootProject.rootProject)
+            patched.gsub!(/(?<!root)project\\.rootProject/, 'rootProject')
+            
+            # Pattern 4: Handle the autolinking pattern specifically
+            patched.gsub!(/def projectRoot\\s*=\\s*findProject\\([^)]*\\)\\.rootProject/, 'def projectRoot = rootProject')
+            patched.gsub!(/def reactNativeProject\\s*=\\s*findProject\\([^)]*\\)\\.rootProject/, 'def reactNativeProject = rootProject')
+            
+            # Pattern 5: Any remaining (something).rootProject where something could be null
+            patched.gsub!(/\\(project\\)\\.rootProject/, 'rootProject')
+            
+            if patched != original
+              File.write(path, patched)
+              puts "PATCHED: \#{path}"
+              return true
+            else
+              puts "UNCHANGED: \#{path}"
+              return false
+            end
+          rescue => e
+            puts "ERROR patching \#{path}: \#{e.message}"
+            return false
+          end
+          
+          files_to_patch = [
+            'android/app/build.gradle',
+            'android/build.gradle', 
+            'android/settings.gradle',
+            'android/app/build.gradle.kts',
+            'android/build.gradle.kts',
+            'android/settings.gradle.kts'
+          ]
+          
+          # Also patch node_modules autolinking files
+          Dir.glob('node_modules/**/native_modules.gradle').each { |f| files_to_patch << f }
+          Dir.glob('node_modules/**/autolinking.gradle').each { |f| files_to_patch << f }
+          Dir.glob('node_modules/**/autolinking_implementation.gradle').each { |f| files_to_patch << f }
+          Dir.glob('node_modules/**/*.gradle').select { |f| File.read(f).include?('rootProject') rescue false }.each { |f| files_to_patch << f }
+          
+          files_to_patch.uniq.each { |f| patch_file(f) }
+          PATCHSCRIPT
+          
+          ruby /tmp/patch_gradle.rb
+          
+          echo "=== Verifying patch applied ==="
+          if grep -n 'findProject.*\\.rootProject' android/app/build.gradle 2>/dev/null; then
+            echo "WARNING: Some patterns may still exist"
+          fi
+          if grep -n 'project\\.rootProject' android/app/build.gradle 2>/dev/null; then
+            echo "WARNING: project.rootProject patterns may still exist"
+          fi
+          echo "=== Line 110-120 of build.gradle after patch ==="
+          sed -n '110,120p' android/app/build.gradle || true
       - name: SDK 34
         script: |
           echo "" >> android/gradle.properties
@@ -232,8 +297,13 @@ workflows:
         script: echo "sdk.dir=\${ANDROID_SDK_ROOT:-\$ANDROID_HOME}" > android/local.properties
       - name: Validate
         script: |
-          if grep -q 'project\.rootProject' android/app/build.gradle 2>/dev/null; then echo "ERROR: Unpatched rootProject"; exit 1; fi
-          echo "OK"
+          echo "=== Final validation ==="
+          if grep -E 'findProject\\([^)]*\\)\\.rootProject|project\\.rootProject' android/app/build.gradle 2>/dev/null; then
+            echo "ERROR: Unpatched rootProject references found!"
+            cat -n android/app/build.gradle | head -150
+            exit 1
+          fi
+          echo "OK - No problematic patterns found"
       - name: APK
         script: export NODE_OPTIONS="--max-old-space-size=4096" && cd android && ./gradlew :app:assembleRelease --no-daemon
       - name: AAB
