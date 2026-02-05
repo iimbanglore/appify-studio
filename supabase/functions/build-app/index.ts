@@ -345,19 +345,31 @@ workflows:
           node process-icons.js
       - name: Generate Android project
         script: npx expo prebuild --platform android --clean --no-install
-      - name: Fix Gradle rootProject crash
+      - name: Fix Gradle rootProject crash (bulletproof)
         script: |
           set -e
-          echo "=== Patching Gradle rootProject references ==="
+          echo "=== DIAGNOSTIC: Gradle rootProject patching ==="
           
+          # Show what expo prebuild generated before patching
+          if [ -f "android/app/build.gradle" ]; then
+            echo "--- android/app/build.gradle (line 110-120 before patch) ---"
+            sed -n '110,120p' android/app/build.gradle || true
+          fi
+          
+          # Enhanced Ruby script with multi-line regex support and verbose logging
           ruby - <<'RUBY'
           def patch_file(path)
             return false unless File.exist?(path)
-            data = File.read(path)
-            fixed = data.dup
-            fixed.gsub!(/(project\.)?findProject\([^\)]*\)\.rootProject/, 'rootProject')
-            fixed.gsub!('project.rootProject', 'rootProject')
-            return false if fixed == data
+            original = File.read(path)
+            fixed = original.dup
+            
+            # Pattern 1: project.findProject(...).rootProject or findProject(...).rootProject (multi-line safe)
+            fixed.gsub!(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m, 'rootProject')
+            
+            # Pattern 2: direct project.rootProject references
+            fixed.gsub!(/\bproject\.rootProject\b/, 'rootProject')
+            
+            return false if fixed == original
             File.write(path, fixed)
             true
           end
@@ -374,13 +386,31 @@ workflows:
             'node_modules/expo-modules-autolinking/scripts/android/autolinking_implementation.gradle',
           ]
 
+          puts "Files to scan:"
+          candidates.each { |p| puts "  #{File.exist?(p) ? '✓' : '✗'} #{p}" }
+          puts ""
+
+          patched_count = 0
           candidates.each do |p|
-            changed = patch_file(p)
-            puts(changed ? "Patched " + p : "Skipped " + p)
+            if patch_file(p)
+              puts "✓ PATCHED: #{p}"
+              patched_count += 1
+            else
+              puts "  skipped: #{p} (no match or missing)"
+            end
           end
+          
+          puts ""
+          puts "Total files patched: #{patched_count}"
           RUBY
           
-          echo "=== Gradle patching complete ==="
+          # Show patched result for verification
+          if [ -f "android/app/build.gradle" ]; then
+            echo "--- android/app/build.gradle (line 110-120 after patch) ---"
+            sed -n '110,120p' android/app/build.gradle || true
+          fi
+          
+          echo "=== Gradle rootProject patching complete ==="
       - name: Configure Android SDK 34
         script: |
           PROP_FILE="android/gradle.properties"
@@ -396,6 +426,23 @@ workflows:
           SDK_DIR="\${ANDROID_SDK_ROOT:-\$ANDROID_HOME}"
           if [ -z "\$SDK_DIR" ]; then echo "Missing Android SDK path"; exit 1; fi
           echo "sdk.dir=\$SDK_DIR" > android/local.properties
+      - name: Validate Gradle setup (preflight)
+        script: |
+          echo "=== Pre-build validation ==="
+          if [ ! -f "android/app/build.gradle" ]; then
+            echo "ERROR: android/app/build.gradle missing"; exit 1
+          fi
+          if grep -q 'project\.rootProject' android/app/build.gradle; then
+            echo "ERROR: Unpatched 'project.rootProject' still present in build.gradle"
+            grep -n 'project\.rootProject' android/app/build.gradle
+            exit 1
+          fi
+          if grep -q 'findProject.*\.rootProject' android/app/build.gradle; then
+            echo "ERROR: Unpatched 'findProject(...).rootProject' still present in build.gradle"
+            grep -n 'findProject.*\.rootProject' android/app/build.gradle
+            exit 1
+          fi
+          echo "✓ Gradle files validated - no rootProject null traps detected"
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
