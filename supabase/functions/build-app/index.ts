@@ -221,6 +221,48 @@ workflows:
           npm install --no-audit --no-fund sharp
       - name: Generate Android project
         script: npx expo prebuild --platform android --clean --no-install
+      - name: Fix Expo Android plugin resolution
+        script: |
+          set -e
+          SETTINGS_FILE="android/settings.gradle"
+          if [ ! -f "$SETTINGS_FILE" ]; then
+            echo "ERROR: android/settings.gradle missing after prebuild"
+            exit 1
+          fi
+
+          ruby - <<'RUBY'
+          settings_path = 'android/settings.gradle'
+          content = File.read(settings_path)
+
+          expo_include = "includeBuild(new File([\"node\", \"--print\", \"require.resolve('expo/package.json')\"].execute(null, rootDir).text.trim()).getParentFile().toString() + \"/../packages/expo-modules-core/android\")"
+
+          unless content.include?('expo-modules-core/android')
+            if content =~ /pluginManagement\s*\{/
+              content = content.sub(/pluginManagement\s*\{/, "pluginManagement {\n  #{expo_include}")
+            else
+              content = "pluginManagement {\n  #{expo_include}\n}\n\n" + content
+            end
+            File.write(settings_path, content)
+            puts 'Patched settings.gradle with expo-modules-core includeBuild'
+          else
+            puts 'settings.gradle already contains expo-modules-core includeBuild'
+          end
+          RUBY
+
+          if ! grep -q "expo-modules-core/android" "$SETTINGS_FILE"; then
+            echo "ERROR: expo-modules-core includeBuild still missing"
+            exit 1
+          fi
+
+          PROP_FILE="android/gradle.properties"
+          touch "$PROP_FILE"
+          if grep -q '^android\.disableAutomaticComponentCreation=' "$PROP_FILE"; then
+            sed -i.bak 's/^android\.disableAutomaticComponentCreation=.*/android.disableAutomaticComponentCreation=false/' "$PROP_FILE"
+          else
+            echo "android.disableAutomaticComponentCreation=false" >> "$PROP_FILE"
+          fi
+          rm -f "$PROP_FILE.bak"
+          echo "✓ Expo Android plugin resolution hardened"
       - name: Fix Gradle rootProject crash (bulletproof)
         script: |
           set -e
