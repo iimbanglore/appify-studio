@@ -1,5 +1,16 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
+// Helper function to encode string to base64 (handles Unicode properly)
+function stringToBase64(str: string): string {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
+  }
+  return btoa(binary);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -49,7 +60,7 @@ async function createGitHubFile(path: string, content: string, message: string):
         },
         body: JSON.stringify({
           message,
-          content: btoa(content),
+          content: stringToBase64(content),
           sha,
         }),
       }
@@ -311,23 +322,24 @@ workflows:
             patched = text.dup
 
             # Multi-line safe patterns
-            patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m, 'rootProject')
-            patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\?\.\s*rootProject/m, 'rootProject')
-            patched.gsub!(/\bproject\s*\.\s*rootProject\b/m, 'rootProject')
+            patched.gsub!(/(project\\.)?findProject\\([^\\)]*\\)\\s*\\.\\s*rootProject/m, 'rootProject')
+            patched.gsub!(/(project\\.)?findProject\\([^\\)]*\\)\\s*\\?\\.\\s*rootProject/m, 'rootProject')
+            patched.gsub!(/\\bproject\\s*\\.\\s*rootProject\\b/m, 'rootProject')
+            patched.gsub!(/\\bproject\\([^\\)]*\\)\\s*\\.\\s*rootProject\\b/m, 'rootProject')
 
             vars = patched
-              .scan(/(?:^|\s)(?:def\s+)?([A-Za-z_]\w*)\s*=\s*(?:project\.)?findProject\([^\)]*\)/m)
+              .scan(/(?:^|\\s)(?:def\\s+)?([A-Za-z_]\\w*)\\s*=\\s*(?:project\\.)?findProject\\([^\\)]*\\)/m)
               .flatten
               .uniq
 
             vars.each do |v|
-              patched.gsub!(/\b#{Regexp.escape(v)}\s*\.\s*rootProject\b/m, 'rootProject')
-              patched.gsub!(/\b#{Regexp.escape(v)}\s*\.\s*getRootProject\(\)\b/m, 'rootProject')
+              patched.gsub!(/\\b\#{Regexp.escape(v)}\\s*\\.\\s*rootProject\\b/m, 'rootProject')
+              patched.gsub!(/\\b\#{Regexp.escape(v)}\\s*\\.\\s*getRootProject\\(\\)\\b/m, 'rootProject')
             end
 
             if aggressive
-              patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*rootProject\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
-              patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*getRootProject\(\)\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
+              patched.gsub!(/\\b([A-Za-z_]\\w*)\\s*\\.\\s*rootProject\\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
+              patched.gsub!(/\\b([A-Za-z_]\\w*)\\s*\\.\\s*getRootProject\\(\\)\\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
             end
 
             patched
@@ -339,10 +351,10 @@ workflows:
             patched = patch_text(original, aggressive: aggressive)
             return false if patched == original
             File.write(path, patched)
-            puts "PATCHED: #{path}"
+            puts "PATCHED: \#{path}"
             true
           rescue => e
-            puts "ERROR patching #{path}: #{e.message}"
+            puts "ERROR patching \#{path}: \#{e.message}"
             false
           end
 
@@ -359,14 +371,14 @@ workflows:
           ]
 
           puts "Files to scan:";
-          candidates.each { |p| puts "  #{File.exist?(p) ? '✓' : '✗'} #{p}" }
+          candidates.each { |p| puts "  \#{File.exist?(p) ? '✓' : '✗'} \#{p}" }
 
           patched_count = 0
           candidates.each do |p|
             patched_count += 1 if patch_file(p, aggressive: (p == 'android/app/build.gradle'))
           end
 
-          puts "Total files patched: #{patched_count}"
+          puts "Total files patched: \#{patched_count}"
           RUBY
 
           echo "=== DIAGNOSTIC: android/app/build.gradle around line 116 (after patch) ==="
@@ -375,7 +387,7 @@ workflows:
           fi
 
           echo "=== Preflight: fail if any '.rootProject' remains in android/app/build.gradle ==="
-          if [ -f "android/app/build.gradle" ] && grep -nE '\\.[[:space:]]*rootProject' android/app/build.gradle; then
+          if [ -f "android/app/build.gradle" ] && grep -nE '\\\\.[[:space:]]*rootProject' android/app/build.gradle; then
             echo "ERROR: Remaining .rootProject references detected (would still risk NPE)."
             exit 1
           fi
@@ -402,36 +414,65 @@ workflows:
           if [ ! -f "android/app/build.gradle" ]; then
             echo "ERROR: android/app/build.gradle missing"; exit 1
           fi
-          if grep -q 'project\.rootProject' android/app/build.gradle; then
+          if grep -q 'project\\.rootProject' android/app/build.gradle; then
             echo "ERROR: Unpatched 'project.rootProject' still present in build.gradle"
-            grep -n 'project\.rootProject' android/app/build.gradle
+            grep -n 'project\\.rootProject' android/app/build.gradle
             exit 1
           fi
-          if grep -q 'findProject.*\.rootProject' android/app/build.gradle; then
+          if grep -q 'findProject.*\\.rootProject' android/app/build.gradle; then
             echo "ERROR: Unpatched 'findProject(...).rootProject' still present in build.gradle"
-            grep -n 'findProject.*\.rootProject' android/app/build.gradle
+            grep -n 'findProject.*\\.rootProject' android/app/build.gradle
+            exit 1
+          fi
+          if grep -qE '\\\\.[[:space:]]*rootProject' android/app/build.gradle; then
+            echo "ERROR: Remaining '.rootProject' references still present in build.gradle"
+            grep -nE '\\\\.[[:space:]]*rootProject' android/app/build.gradle
             exit 1
           fi
           echo "✓ Gradle files validated - no rootProject null traps detected"
       - name: Build Android APK
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Build Android App Bundle
         script: |
           export NODE_OPTIONS="--max-old-space-size=4096"
-          cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
       - name: Copy build outputs
         script: |
           mkdir -p $CM_BUILD_DIR/build/outputs
-          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
-          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\\\;
+          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\\\;
           ls -la $CM_BUILD_DIR/build/outputs/
+      - name: Capture Android diagnostics on failure
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/diagnostics
+          echo "=== android/app/build.gradle lines 90-140 ===" > $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          if [ -f "android/app/build.gradle" ]; then
+            nl -ba android/app/build.gradle | sed -n '90,140p' >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          else
+            echo "FILE NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          fi
+          echo "" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          echo "=== Full android/app/build.gradle ===" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          cat android/app/build.gradle >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt 2>/dev/null || true
+          echo "=== gradle.properties ===" > $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt
+          cat android/gradle.properties >> $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt
+          echo "=== settings.gradle ===" > $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt
+          cat android/settings.gradle >> $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt
+          echo "=== android/build.gradle ===" > $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt
+          cat android/build.gradle >> $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt
+          echo "=== package.json ===" > $CM_BUILD_DIR/build/diagnostics/package-json.txt
+          cat package.json >> $CM_BUILD_DIR/build/diagnostics/package-json.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/package-json.txt
+          echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+        when:
+          failure: true
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
       - build/outputs/*.apk
       - build/outputs/*.aab
+      - build/diagnostics/**
     publishing:
       email:
         recipients:
@@ -496,7 +537,7 @@ workflows:
             project.save
             puts "Patched Pods deployment target to 13.4"
           rescue => e
-            puts "Patch skipped: #{e.message}"
+            puts "Patch skipped: \#{e.message}"
             exit 0
           end
           RUBY
@@ -506,23 +547,21 @@ workflows:
           export NODE_BINARY="$(command -v node || which node)"
           export RCT_NO_LAUNCH_PACKAGER=true
           export CI=1
-          
+
           echo "=== iOS directory contents ==="
           ls -la
-          
+
           echo "=== Detecting Xcode workspace/project ==="
-          # Use find with -type d to detect .xcworkspace directories (not files inside them)
-          # Exclude Pods.xcworkspace as it's internal CocoaPods metadata
           WORKSPACE=""
           PROJECT=""
-          
+
           for dir in *.xcworkspace; do
             if [ -d "$dir" ] && [ "$dir" != "Pods.xcworkspace" ]; then
               WORKSPACE="$dir"
               break
             fi
           done
-          
+
           if [ -z "$WORKSPACE" ]; then
             for dir in *.xcodeproj; do
               if [ -d "$dir" ] && [ "$dir" != "Pods.xcodeproj" ]; then
@@ -531,10 +570,10 @@ workflows:
               fi
             done
           fi
-          
+
           echo "Detected workspace: $WORKSPACE"
           echo "Detected project: $PROJECT"
-          
+
           if [ -n "$WORKSPACE" ]; then
             echo "=== Workspace schemes ==="
             xcodebuild -list -workspace "$WORKSPACE" || true
@@ -568,9 +607,38 @@ workflows:
           mkdir -p Payload
           cp -r *.app Payload/
           zip -r $CM_BUILD_DIR/build/ipa/App.ipa Payload
+      - name: Capture iOS diagnostics on failure
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/diagnostics
+          echo "=== iOS directory listing ===" > $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          ls -la ios/ >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || echo "ios/ not found" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          echo "" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          echo "=== .xcworkspace directories ===" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          find ios -maxdepth 1 -name "*.xcworkspace" -type d >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || true
+          echo "=== .xcodeproj directories ===" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          find ios -maxdepth 1 -name "*.xcodeproj" -type d >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || true
+          echo "=== Workspace schemes ===" > $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+          cd ios
+          for ws in *.xcworkspace; do
+            if [ -d "\\$ws" ] && [ "\\$ws" != "Pods.xcworkspace" ]; then
+              echo "Workspace: \\$ws" >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+              xcodebuild -list -json -workspace "\\$ws" 2>/dev/null >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt || echo "Could not list schemes" >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+            fi
+          done
+          cd ..
+          echo "=== Podfile ===" > $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt
+          cat ios/Podfile >> $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt
+          echo "=== Podfile.lock (first 50 lines) ===" > $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt
+          head -50 ios/Podfile.lock >> $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt
+          echo "=== .xcode.env.local ===" > $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
+          cat ios/.xcode.env.local >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
+          echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+        when:
+          failure: true
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
+      - build/diagnostics/**
     publishing:
       email:
         recipients:
