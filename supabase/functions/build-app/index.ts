@@ -356,11 +356,35 @@ workflows:
           find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
           find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
           ls -la $CM_BUILD_DIR/build/outputs/
+      - name: Capture Android diagnostics on failure
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/diagnostics
+          echo "=== android/app/build.gradle lines 90-140 ===" > $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          if [ -f "android/app/build.gradle" ]; then
+            nl -ba android/app/build.gradle | sed -n '90,140p' >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          else
+            echo "FILE NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          fi
+          echo "" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          echo "=== Full android/app/build.gradle ===" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+          cat android/app/build.gradle >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt 2>/dev/null || true
+          echo "=== gradle.properties ===" > $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt
+          cat android/gradle.properties >> $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-gradle-properties.txt
+          echo "=== settings.gradle ===" > $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt
+          cat android/settings.gradle >> $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-settings-gradle.txt
+          echo "=== android/build.gradle ===" > $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt
+          cat android/build.gradle >> $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/android-root-build-gradle.txt
+          echo "=== package.json ===" > $CM_BUILD_DIR/build/diagnostics/package-json.txt
+          cat package.json >> $CM_BUILD_DIR/build/diagnostics/package-json.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/package-json.txt
+          echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
+        when:
+          failure: true
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
       - build/outputs/*.apk
       - build/outputs/*.aab
+      - build/diagnostics/**
     publishing:
       email:
         recipients:
@@ -495,9 +519,38 @@ workflows:
           mkdir -p Payload
           cp -r *.app Payload/
           zip -r $CM_BUILD_DIR/build/ipa/${escapedAppName}.ipa Payload
+      - name: Capture iOS diagnostics on failure
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/diagnostics
+          echo "=== iOS directory listing ===" > $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          ls -la ios/ >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || echo "ios/ not found" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          echo "" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          echo "=== .xcworkspace directories ===" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          find ios -maxdepth 1 -name "*.xcworkspace" -type d >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || true
+          echo "=== .xcodeproj directories ===" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+          find ios -maxdepth 1 -name "*.xcodeproj" -type d >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt 2>/dev/null || true
+          echo "=== Workspace schemes ===" > $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+          cd ios
+          for ws in *.xcworkspace; do
+            if [ -d "\$ws" ] && [ "\$ws" != "Pods.xcworkspace" ]; then
+              echo "Workspace: \$ws" >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+              xcodebuild -list -json -workspace "\$ws" 2>/dev/null >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt || echo "Could not list schemes" >> $CM_BUILD_DIR/build/diagnostics/ios-schemes.txt
+            fi
+          done
+          cd ..
+          echo "=== Podfile ===" > $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt
+          cat ios/Podfile >> $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-podfile.txt
+          echo "=== Podfile.lock (first 50 lines) ===" > $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt
+          head -50 ios/Podfile.lock >> $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-podfile-lock.txt
+          echo "=== .xcode.env.local ===" > $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
+          cat ios/.xcode.env.local >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
+          echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
+        when:
+          failure: true
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
+      - build/diagnostics/**
     publishing:
       email:
         recipients:
