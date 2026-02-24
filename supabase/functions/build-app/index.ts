@@ -198,42 +198,47 @@ async function updateAppCode(config: BuildRequest): Promise<boolean> {
 
 async function uploadCodemagicConfig(config: BuildRequest): Promise<boolean> {
   const escapedAppName = config.appName.replace(/\s+/g, '');
-  const yaml = `# Codemagic config for ${config.appName}
+  const yaml = `# Codemagic CI/CD configuration
+# Auto-generated template for WebView apps
+# IMPORTANT: Builds are triggered via API only (push triggers disabled)
+
 workflows:
   android-workflow:
     name: Android Build
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
+      groups:
+        - app_credentials
       vars:
         PACKAGE_NAME: ${config.packageId}
       node: 18.17.0
       java: "17"
     scripts:
-      - name: Install deps
-        script: npm install --no-audit --no-fund && npm install --no-audit --no-fund sharp
-      - name: Generate Android
+      - name: Install dependencies
+        script: |
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund sharp
+      - name: Generate Android project
         script: npx expo prebuild --platform android --clean --no-install
-      - name: Patch Gradle (rootProject NPE)
+      - name: Fix Gradle rootProject crash (bulletproof)
         script: |
           set -e
           echo "=== DIAGNOSTIC: android/app/build.gradle around line 116 (before patch) ==="
           if [ -f "android/app/build.gradle" ]; then
             nl -ba android/app/build.gradle | sed -n '105,130p' || true
-          else
-            echo "android/app/build.gradle not found yet"
           fi
 
           ruby - <<'RUBY'
           def patch_text(text, aggressive: false)
             patched = text.dup
 
-            # Multi-line safe patterns: findProject(...).rootProject / project.rootProject
+            # Multi-line safe patterns
             patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\.\s*rootProject/m, 'rootProject')
             patched.gsub!(/(project\.)?findProject\([^\)]*\)\s*\?\.\s*rootProject/m, 'rootProject')
             patched.gsub!(/\bproject\s*\.\s*rootProject\b/m, 'rootProject')
+            patched.gsub!(/\bproject\([^\)]*\)\s*\.\s*rootProject\b/m, 'rootProject')
 
-            # If a variable is assigned from findProject(...), var can be null → var.rootProject NPE.
             vars = patched
               .scan(/(?:^|\s)(?:def\s+)?([A-Za-z_]\w*)\s*=\s*(?:project\.)?findProject\([^\)]*\)/m)
               .flatten
@@ -244,7 +249,6 @@ workflows:
               patched.gsub!(/\b#{Regexp.escape(v)}\s*\.\s*getRootProject\(\)\b/m, 'rootProject')
             end
 
-            # Last-resort (only in app/build.gradle): rewrite ANY x.rootProject to rootProject.
             if aggressive
               patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*rootProject\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
               patched.gsub!(/\b([A-Za-z_]\w*)\s*\.\s*getRootProject\(\)\b/m) { |m| $1 == 'rootProject' ? m : 'rootProject' }
@@ -254,36 +258,39 @@ workflows:
           end
 
           def patch_file(path, aggressive: false)
-            return unless File.exist?(path)
+            return false unless File.exist?(path)
             original = File.read(path)
             patched = patch_text(original, aggressive: aggressive)
-
-            if patched != original
-              File.write(path, patched)
-              puts "PATCHED: #{path}"
-            else
-              puts "skipped: #{path} (no match)"
-            end
+            return false if patched == original
+            File.write(path, patched)
+            puts "PATCHED: #{path}"
+            true
           rescue => e
             puts "ERROR patching #{path}: #{e.message}"
+            false
           end
 
           candidates = [
             'android/app/build.gradle',
-            'android/build.gradle',
-            'android/settings.gradle',
             'android/app/build.gradle.kts',
+            'android/build.gradle',
             'android/build.gradle.kts',
+            'android/settings.gradle',
             'android/settings.gradle.kts',
             'node_modules/@react-native-community/cli-platform-android/native_modules.gradle',
             'node_modules/expo-modules-autolinking/scripts/android/autolinking.gradle',
             'node_modules/expo-modules-autolinking/scripts/android/autolinking_implementation.gradle',
           ]
 
+          puts "Files to scan:";
+          candidates.each { |p| puts "  #{File.exist?(p) ? '✓' : '✗'} #{p}" }
+
+          patched_count = 0
           candidates.each do |p|
-            # Aggressive rewrite only for the failing file to avoid risky changes in node_modules.
-            patch_file(p, aggressive: (p == 'android/app/build.gradle'))
+            patched_count += 1 if patch_file(p, aggressive: (p == 'android/app/build.gradle'))
           end
+
+          puts "Total files patched: #{patched_count}"
           RUBY
 
           echo "=== DIAGNOSTIC: android/app/build.gradle around line 116 (after patch) ==="
@@ -297,40 +304,69 @@ workflows:
             exit 1
           fi
 
-          echo "=== Gradle patching complete ==="
-      - name: SDK 34
+          echo "=== Gradle rootProject patching complete ==="
+      - name: Configure Android SDK 34
         script: |
-          echo "" >> android/gradle.properties
-          echo "android.compileSdkVersion=34" >> android/gradle.properties
-          echo "android.targetSdkVersion=34" >> android/gradle.properties
-          echo "android.minSdkVersion=24" >> android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m" >> android/gradle.properties
-      - name: local.properties
-        script: echo "sdk.dir=\${ANDROID_SDK_ROOT:-\$ANDROID_HOME}" > android/local.properties
-      - name: Validate
+          PROP_FILE="android/gradle.properties"
+          echo "" >> "$PROP_FILE"
+          echo "# SDK 34 enforcement" >> "$PROP_FILE"
+          echo "android.compileSdkVersion=34" >> "$PROP_FILE"
+          echo "android.targetSdkVersion=34" >> "$PROP_FILE"
+          echo "android.minSdkVersion=24" >> "$PROP_FILE"
+          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" >> "$PROP_FILE"
+          cat "$PROP_FILE"
+      - name: Set up local.properties
         script: |
-          echo "=== Final validation ==="
-          if grep -E 'findProject\\([^)]*\\)\\.rootProject|project\\.rootProject' android/app/build.gradle 2>/dev/null; then
-            echo "ERROR: Unpatched rootProject references found!"
-            cat -n android/app/build.gradle | head -150
+          SDK_DIR="\${ANDROID_SDK_ROOT:-\$ANDROID_HOME}"
+          if [ -z "$SDK_DIR" ]; then echo "Missing Android SDK path"; exit 1; fi
+          echo "sdk.dir=$SDK_DIR" > android/local.properties
+      - name: Validate Gradle setup (preflight)
+        script: |
+          echo "=== Pre-build validation ==="
+          if [ ! -f "android/app/build.gradle" ]; then
+            echo "ERROR: android/app/build.gradle missing"; exit 1
+          fi
+          if grep -q 'project\.rootProject' android/app/build.gradle; then
+            echo "ERROR: Unpatched 'project.rootProject' still present in build.gradle"
+            grep -n 'project\.rootProject' android/app/build.gradle
             exit 1
           fi
-          echo "OK - No problematic patterns found"
-      - name: APK
-        script: export NODE_OPTIONS="--max-old-space-size=4096" && cd android && ./gradlew :app:assembleRelease --no-daemon
-      - name: AAB
-        script: export NODE_OPTIONS="--max-old-space-size=4096" && cd android && ./gradlew :app:bundleRelease --no-daemon
-      - name: Copy
-        script: mkdir -p \$CM_BUILD_DIR/build/outputs && find android/app/build/outputs -name "*.apk" -exec cp {} \$CM_BUILD_DIR/build/outputs/ \\; && find android/app/build/outputs -name "*.aab" -exec cp {} \$CM_BUILD_DIR/build/outputs/ \\;
+          if grep -q 'findProject.*\.rootProject' android/app/build.gradle; then
+            echo "ERROR: Unpatched 'findProject(...).rootProject' still present in build.gradle"
+            grep -n 'findProject.*\.rootProject' android/app/build.gradle
+            exit 1
+          fi
+          if grep -qE '\\.[[:space:]]*rootProject' android/app/build.gradle; then
+            echo "ERROR: Remaining '.rootProject' references still present in build.gradle"
+            grep -nE '\\.[[:space:]]*rootProject' android/app/build.gradle
+            exit 1
+          fi
+          echo "✓ Gradle files validated - no rootProject null traps detected"
+      - name: Build Android APK
+        script: |
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          cd android && ./gradlew :app:assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
+      - name: Build Android App Bundle
+        script: |
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          cd android && ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4096m"
+      - name: Copy build outputs
+        script: |
+          mkdir -p $CM_BUILD_DIR/build/outputs
+          find android/app/build/outputs -name "*.apk" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          find android/app/build/outputs -name "*.aab" -exec cp {} $CM_BUILD_DIR/build/outputs/ \\;
+          ls -la $CM_BUILD_DIR/build/outputs/
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
-      - build/outputs/*
+      - build/outputs/*.apk
+      - build/outputs/*.aab
     publishing:
       email:
-        recipients: [team@example.com]
+        recipients:
+          - team@example.com
         notify:
-          success: false
+          success: true
           failure: true
 
   ios-workflow:
@@ -338,56 +374,136 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
+      groups:
+        - app_credentials
       vars:
         BUNDLE_ID: ${config.packageId}
       node: 18.17.0
       xcode: 16.2
       cocoapods: default
     scripts:
-      - name: Install deps
-        script: npm install --no-audit --no-fund && npm install --no-audit --no-fund sharp
-      - name: Generate iOS
-        script: npx expo prebuild --platform ios --clean --no-install
-      - name: Node env
-        script: echo "export NODE_BINARY=\$(command -v node)" > ios/.xcode.env.local
-      - name: Patch Boost
+      - name: Install dependencies
         script: |
-          BOOST="node_modules/react-native/third-party-podspecs/boost.podspec"
-          [ -f "\$BOOST" ] && sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2|g" "\$BOOST"
-      - name: Pods
-        script: cd ios && rm -rf Pods Podfile.lock && pod repo update && pod install --repo-update
-      - name: Fix Pods target
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund sharp
+      - name: Generate iOS project
+        script: npx expo prebuild --platform ios --clean --no-install
+      - name: Configure Node for Xcode
+        script: |
+          NODE_BIN="$(command -v node || which node)"
+          echo "export NODE_BINARY=$NODE_BIN" > ios/.xcode.env.local
+      - name: Patch Boost podspec URL
+        script: |
+          BOOST_PODSPEC="node_modules/react-native/third-party-podspecs/boost.podspec"
+          if [ -f "$BOOST_PODSPEC" ]; then
+            BOOST_URL="https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2"
+            sed -i.bak "s|https://boostorg.jfrog.io/artifactory/main/release/[^']*|$BOOST_URL|g" "$BOOST_PODSPEC"
+          fi
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod repo update
+          pod install --repo-update --clean-install
+      - name: Fix Pods deployment target
         script: |
           cd ios
           ruby - <<'RUBY'
-          begin; require 'xcodeproj'; p=Xcodeproj::Project.open('Pods/Pods.xcodeproj'); p.targets.each{|t| t.build_configurations.each{|c| c.build_settings['IPHONEOS_DEPLOYMENT_TARGET']='13.4'}}; p.save; rescue => e; puts e.message; end
+          begin
+            require 'xcodeproj'
+            project_path = 'Pods/Pods.xcodeproj'
+            unless File.exist?(project_path)
+              puts "Pods.xcodeproj not found, skipping"
+              exit 0
+            end
+            project = Xcodeproj::Project.open(project_path)
+            project.targets.each do |t|
+              t.build_configurations.each do |c|
+                c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.4'
+              end
+            end
+            project.save
+            puts "Patched Pods deployment target to 13.4"
+          rescue => e
+            puts "Patch skipped: #{e.message}"
+            exit 0
+          end
           RUBY
-      - name: Archive
+      - name: Build iOS Archive
         script: |
           cd ios
-          export NODE_BINARY="\$(command -v node)"
+          export NODE_BINARY="$(command -v node || which node)"
           export RCT_NO_LAUNCH_PACKAGER=true
           export CI=1
-          WS=""
-          for d in *.xcworkspace; do [ -d "\$d" ] && [ "\$d" != "Pods.xcworkspace" ] && WS="\$d" && break; done
-          if [ -z "\$WS" ]; then echo "No workspace"; exit 1; fi
-          SCHEME=\$(xcodebuild -list -json -workspace "\$WS" 2>/dev/null | jq -r '.workspace.schemes[0] // empty')
-          if [ -z "\$SCHEME" ]; then echo "No scheme"; exit 1; fi
-          xcodebuild -workspace "\$WS" -scheme "\$SCHEME" -configuration Release -sdk iphoneos -archivePath \$CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
-      - name: IPA
+
+          echo "=== iOS directory contents ==="
+          ls -la
+
+          echo "=== Detecting Xcode workspace/project ==="
+          WORKSPACE=""
+          PROJECT=""
+
+          for dir in *.xcworkspace; do
+            if [ -d "$dir" ] && [ "$dir" != "Pods.xcworkspace" ]; then
+              WORKSPACE="$dir"
+              break
+            fi
+          done
+
+          if [ -z "$WORKSPACE" ]; then
+            for dir in *.xcodeproj; do
+              if [ -d "$dir" ] && [ "$dir" != "Pods.xcodeproj" ]; then
+                PROJECT="$dir"
+                break
+              fi
+            done
+          fi
+
+          echo "Detected workspace: $WORKSPACE"
+          echo "Detected project: $PROJECT"
+
+          if [ -n "$WORKSPACE" ]; then
+            echo "=== Workspace schemes ==="
+            xcodebuild -list -workspace "$WORKSPACE" || true
+            SCHEME_NAME=$(xcodebuild -list -json -workspace "$WORKSPACE" 2>/dev/null | jq -r '.workspace.schemes[0] // empty')
+            if [ -z "$SCHEME_NAME" ]; then
+              echo "ERROR: Could not detect scheme from workspace $WORKSPACE"
+              exit 1
+            fi
+            echo "Building with workspace: $WORKSPACE | scheme: $SCHEME_NAME"
+            xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          elif [ -n "$PROJECT" ]; then
+            echo "=== Project schemes ==="
+            xcodebuild -list -project "$PROJECT" || true
+            SCHEME_NAME=$(xcodebuild -list -json -project "$PROJECT" 2>/dev/null | jq -r '.project.schemes[0] // empty')
+            if [ -z "$SCHEME_NAME" ]; then
+              echo "ERROR: Could not detect scheme from project $PROJECT"
+              exit 1
+            fi
+            echo "Building with project: $PROJECT | scheme: $SCHEME_NAME"
+            xcodebuild -project "$PROJECT" -scheme "$SCHEME_NAME" -configuration Release -sdk iphoneos -archivePath $CM_BUILD_DIR/build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+          else
+            echo "ERROR: No .xcworkspace or .xcodeproj directory found in ios/"
+            echo "Available files/directories:"
+            ls -la
+            exit 1
+          fi
+      - name: Create unsigned IPA
         script: |
-          mkdir -p \$CM_BUILD_DIR/build/ipa
-          cd \$CM_BUILD_DIR/build/App.xcarchive/Products/Applications
-          mkdir Payload && cp -r *.app Payload/
-          zip -r \$CM_BUILD_DIR/build/ipa/${escapedAppName}.ipa Payload
+          mkdir -p $CM_BUILD_DIR/build/ipa
+          cd $CM_BUILD_DIR/build/App.xcarchive/Products/Applications
+          mkdir -p Payload
+          cp -r *.app Payload/
+          zip -r $CM_BUILD_DIR/build/ipa/${escapedAppName}.ipa Payload
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
     publishing:
       email:
-        recipients: [team@example.com]
+        recipients:
+          - team@example.com
         notify:
-          success: false
+          success: true
           failure: true
 `;
   return await updateGitHubFile('codemagic.yaml', stringToBase64(yaml), `Update codemagic.yaml for ${config.appName}`);
