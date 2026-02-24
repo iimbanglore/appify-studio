@@ -465,8 +465,6 @@ workflows:
           echo "=== package.json ===" > $CM_BUILD_DIR/build/diagnostics/package-json.txt
           cat package.json >> $CM_BUILD_DIR/build/diagnostics/package-json.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/package-json.txt
           echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/android-build-gradle-snippet.txt
-        when:
-          failure: true
     artifacts:
       - android/app/build/outputs/**/*.apk
       - android/app/build/outputs/**/*.aab
@@ -633,8 +631,6 @@ workflows:
           echo "=== .xcode.env.local ===" > $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
           cat ios/.xcode.env.local >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt 2>/dev/null || echo "NOT FOUND" >> $CM_BUILD_DIR/build/diagnostics/ios-xcode-env.txt
           echo "Diagnostics captured at $(date)" >> $CM_BUILD_DIR/build/diagnostics/ios-directory.txt
-        when:
-          failure: true
     artifacts:
       - build/ipa/*.ipa
       - build/*.xcarchive
